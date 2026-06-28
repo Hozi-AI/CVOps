@@ -25,8 +25,9 @@ import { useCreateRun } from '../api/runs'
 import { useRegistryTypes } from '../api/registry'
 import { usePinProject } from '../lib/useActiveProject'
 import { STEP_TYPES } from '../lib/stepCatalog'
-import { STEP_META, stepColor, stepLabel, resolveInputs, buildInputs } from '../lib/stepMeta'
+import { STEP_META, stepColor, stepLabel, resolveInputs, buildInputs, extractRunParams } from '../lib/stepMeta'
 import { Button, Drawer, Field, Input } from '../components/ui'
+import { RunParamsDialog } from '../components/runs/RunParamsDialog'
 import { toast } from '../store/toast'
 import { validateDag, layeredLayout, type GraphNode, type GraphEdge } from '../lib/workflowGraph'
 
@@ -115,6 +116,8 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
   const [loaded, setLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showIssues, setShowIssues] = useState(false)
+  const [paramsDialogOpen, setParamsDialogOpen] = useState(false)
+  const [pendingParams, setPendingParams] = useState<string[]>([])
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
 
@@ -215,8 +218,24 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
   }
 
   async function handleRun() {
+    const required = extractRunParams(workflow?.definition ?? {})
+    if (required.length > 0) {
+      setPendingParams(required)
+      setParamsDialogOpen(true)
+      return
+    }
     try {
       const run = await createRun.mutateAsync({ workflowId })
+      navigate(`/runs/${run.id}`)
+    } catch {
+      // Surfaced by the global mutation error handler (toast).
+    }
+  }
+
+  async function handleRunWithParams(values: Record<string, string>) {
+    try {
+      const run = await createRun.mutateAsync({ workflowId, params: values })
+      setParamsDialogOpen(false)
       navigate(`/runs/${run.id}`)
     } catch {
       // Surfaced by the global mutation error handler (toast).
@@ -373,6 +392,14 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
           </div>
         )}
       </Drawer>
+
+      <RunParamsDialog
+        params={pendingParams}
+        open={paramsDialogOpen}
+        onConfirm={handleRunWithParams}
+        onCancel={() => setParamsDialogOpen(false)}
+        loading={createRun.isPending}
+      />
     </div>
   )
 }

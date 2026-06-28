@@ -39,7 +39,10 @@ class CommitDatasetStep(Step):
         from sqlalchemy import text  # noqa: PLC0415
 
         sample_ids: list[str] = [str(s) for s in inputs.get("sample_ids", [])]
-        revision_ids: list[str] = [str(r) for r in inputs.get("annotation_revision_ids", [])]
+        revision_ids: list[str] = [
+            str(r) for r in inputs.get("annotation_revision_ids") or []
+            if r is not None and str(r) not in ("None", "")
+        ]
         if not sample_ids:
             raise ValueError("commit_dataset requires at least one sample_id")
 
@@ -331,4 +334,4 @@ class CommitDatasetStep(Step):
         ).first()
         if row is None:
             return None, None
-        return str(row[1]), str(row[0])
+        return (str(row[1]) if row[1] is not None else None), str(row[0])

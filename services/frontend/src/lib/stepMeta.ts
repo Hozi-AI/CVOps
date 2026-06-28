@@ -71,7 +71,7 @@ export const STEP_META: Record<string, StepMeta> = {
     runnable: false,
     color: '#FBBF24',
     inputs: ['sample_ids', 'annotation_revision_ids'],
-    outputs: [],
+    outputs: ['annotation_revision_ids'],
     runParamInputs: ['sample_ids', 'annotation_revision_ids'],
     fields: [
       { key: 'labeling_backend', label: 'Labeling backend', widget: 'select', options: [{ value: 'cvat', label: 'CVAT' }] },
@@ -208,6 +208,20 @@ export function resolveInputs(
     }
   }
   return resolved
+}
+
+/** Extract unique $run.params.<name> references from a saved workflow definition. */
+export function extractRunParams(definition: Record<string, unknown>): string[] {
+  const steps = (definition.steps ?? []) as Array<{ inputs?: Record<string, string> }>
+  const seen = new Set<string>()
+  const RE = /^\$run\.params\.(.+)$/
+  for (const step of steps) {
+    for (const ref of Object.values(step.inputs ?? {})) {
+      const m = RE.exec(ref)
+      if (m) seen.add(m[1])
+    }
+  }
+  return [...seen]
 }
 
 /** The `inputs` object persisted onto a step in the workflow definition. */
