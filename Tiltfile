@@ -279,13 +279,11 @@ if ENABLE_CVAT:
     )
 
     # CVAT's compose bind-mounts config files (vector.toml, grafana_conf.yml, …)
-    # straight out of the `services/cvat` git submodule. If the submodule isn't
-    # checked out, those host paths don't exist and Docker silently creates them as
-    # root-owned *directories* — which then fail to mount onto the container's
-    # config *files*. Initialise the submodule before any CVAT container starts so
-    # the real files are always present. Idempotent: a no-op once checked out.
+    # from services/cvat/components/analytics/. These were vendored manually
+    # (see docs/09-gaps-and-considerations.md §F) because the git submodule
+    # cannot be fetched reliably. We just verify the files exist here.
     local_resource('cvat-submodule',
-        cmd='git submodule update --init services/cvat',
+        cmd='test -f services/cvat/components/analytics/vector/vector.toml && test -f services/cvat/components/analytics/grafana_conf.yml || { echo "CVAT config files missing — see docs/09-gaps-and-considerations.md section F"; exit 1; }',
         labels=['1-infra'],
     )
 

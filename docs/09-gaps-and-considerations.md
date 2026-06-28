@@ -96,6 +96,17 @@ This is the "things you might have missed" document. These are real, mostly CV/Y
 
 ---
 
+## F. Known infra tech debt
+
+### CVAT submodule — config files should be vendored {#cvat-submodule-vendoring}
+**Problem.** `docker-compose.override.yml` bind-mounts three config files from the `services/cvat` git submodule into CVAT containers (`grafana_conf.yml`, `vector.toml`, `grafana/dashboards/*.json`). The submodule points to a specific CVAT commit that git cannot fetch directly (it isn't a branch/tag tip), so `git submodule update --init services/cvat` fails on a fresh checkout. As a workaround those files were downloaded manually from GitHub and committed into `services/cvat/components/analytics/`.
+
+**Why it bites.** Any developer setting up the repo for the first time hits a broken `tilt up -- --cvat` with no obvious fix. The submodule also drags in 100k+ files of CVAT source that are never used — only those 3 config paths matter.
+
+**Recommended fix.** Remove the `services/cvat` submodule entirely. Copy the 3 config paths into `manifests/cvat-config/` (or inline them directly in `docker-compose.override.yml` via configs/volumes). Update the bind-mount paths. Pin the CVAT image tags in the compose file instead of relying on submodule pointer for version coupling. This makes `tilt up -- --cvat` work on a plain `git clone` with no submodule step.
+
+---
+
 ## E. Explicit decisions to make before building
 
 A short list to resolve as a team — most are design forks the docs are built to absorb either way:
