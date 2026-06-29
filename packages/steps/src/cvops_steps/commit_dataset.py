@@ -147,7 +147,8 @@ class CommitDatasetStep(Step):
                 )
             ).all()
             for p_sid, p_rev, p_split in parent_rows:
-                merged[str(p_sid)] = (str(p_rev), p_split)
+                if p_rev is not None:  # skip corrupt rows from pre-fix commits
+                    merged[str(p_sid)] = (str(p_rev), p_split)
 
         # The batch wins on overlap (and adds batch-only samples).
         # TODO(#141): removal semantics — a future "this commit deletes sample X"

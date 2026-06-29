@@ -399,6 +399,7 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
         onConfirm={handleRunWithParams}
         onCancel={() => setParamsDialogOpen(false)}
         loading={createRun.isPending}
+        projectId={workflow?.project_id}
       />
     </div>
   )
