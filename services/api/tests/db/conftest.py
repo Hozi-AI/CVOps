@@ -100,11 +100,11 @@ async def make_sample(
 
 
 async def make_ontology(
-    session: AsyncSession, project_id: uuid.UUID | None = None, **kwargs
+    session: AsyncSession, org_id: uuid.UUID | None = None, **kwargs
 ) -> Ontology:
-    if project_id is None:
-        project_id = (await make_project(session)).id
-    ont = Ontology(project_id=project_id, name=f"ont-{_uid()}", **kwargs)
+    if org_id is None:
+        org_id = (await make_org(session)).id
+    ont = Ontology(org_id=org_id, name=f"ont-{_uid()}", **kwargs)
     session.add(ont)
     await session.flush()
     return ont
@@ -133,7 +133,7 @@ async def make_commit(
     if dataset_id is None:
         dataset_id = (await make_dataset(session, project_id=project_id)).id
     if ontology_id is None:
-        ontology_id = (await make_ontology(session, project_id=project_id)).id
+        ontology_id = (await make_ontology(session)).id
     commit = Commit(
         project_id=project_id,
         dataset_id=dataset_id,
