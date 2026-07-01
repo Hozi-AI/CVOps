@@ -2,13 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useProject, useUpdateProject, useDeleteProject } from '../api/projects'
 import { useWorkflows, useCreateWorkflow } from '../api/workflows'
-import {
-  useOntologies,
-  useCreateOntology,
-  useLabelClasses,
-  useCreateLabelClass,
-  useDeleteLabelClass,
-} from '../api/ontologies'
+import { useOntologies } from '../api/ontologies'
 import { INGEST_WORKFLOW_DEFINITION, INGEST_WORKFLOW_NAME } from '../lib/ingest'
 import { LoadingState } from '../components/ui'
 
@@ -20,6 +14,7 @@ export default function ProjectSettings() {
   const updateProject = useUpdateProject(id)
   const createWorkflow = useCreateWorkflow()
   const deleteProject = useDeleteProject()
+  const { data: ontologies } = useOntologies()
 
   const [name, setName] = useState('')
   const [taskType, setTaskType] = useState('')
@@ -145,7 +140,34 @@ export default function ProjectSettings() {
         </button>
       </div>
 
-      {id && <LabelClassesCard projectId={id} />}
+      <div className="bg-surface-2 rounded-xl border border-border shadow-sm p-6 mb-6 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-text-primary">Default label set</h3>
+          <p className="text-xs text-text-secondary mt-1">
+            The ontology used when committing datasets and running CVAT review tasks for this project.
+            Manage label sets in <Link to="/ontologies" className="text-iris-400 hover:underline">Label Sets</Link>.
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-text-primary mb-1">Label set</label>
+          <select
+            value={project?.default_ontology_id ?? ''}
+            onChange={(e) => updateProject.mutate({ default_ontology_id: e.target.value || null })}
+            disabled={updateProject.isPending}
+            className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus"
+          >
+            <option value="">None</option>
+            {ontologies?.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name} (v{o.version})
+              </option>
+            ))}
+          </select>
+          {updateProject.isSuccess && (
+            <p className="text-xs text-success mt-1">✓ Saved</p>
+          )}
+        </div>
+      </div>
 
       <div className="bg-surface-2 rounded-xl border border-error/30 shadow-sm p-6">
         <h3 className="text-sm font-bold text-error mb-2">Danger zone</h3>
@@ -180,128 +202,3 @@ export default function ProjectSettings() {
   )
 }
 
-function LabelClassesCard({ projectId }: { projectId: string }) {
-  const { data: ontologies } = useOntologies(projectId)
-  const createOntology = useCreateOntology(projectId)
-  // One label set per project for now; human_review resolves it as the
-  // project's ontology and seeds each CVAT task's classes from it.
-  const ontology = ontologies?.[0]
-  const { data: classes } = useLabelClasses(ontology?.id)
-  const createClass = useCreateLabelClass(ontology?.id)
-  const deleteClass = useDeleteLabelClass(ontology?.id)
-
-  const [key, setKey] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [color, setColor] = useState('#7B6CF6')
-
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault()
-    if (!ontology?.id || !key.trim()) return
-    const sortOrder = classes && classes.length ? Math.max(...classes.map(c => c.sort_order)) + 1 : 0
-    await createClass.mutateAsync({
-      class_key: key.trim(),
-      display_name: displayName.trim() || key.trim(),
-      color,
-      sort_order: sortOrder,
-    })
-    setKey('')
-    setDisplayName('')
-    setColor('#7B6CF6')
-  }
-
-  return (
-    <div className="bg-surface-2 rounded-xl border border-border shadow-sm p-6 mb-6 space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-text-primary">Label classes</h3>
-        <p className="text-xs text-text-secondary mt-1">
-          The classes reviewers annotate with in CVAT — defined on the project ontology and
-          pushed into every human-review task.
-        </p>
-      </div>
-
-      {!ontology ? (
-        <button
-          onClick={() => createOntology.mutate({ name: 'default' })}
-          disabled={createOntology.isPending}
-          className="border border-iris/30 text-iris-400 px-4 py-2 rounded-lg text-sm font-medium hover:bg-iris/10 disabled:opacity-60 transition-colors"
-        >
-          {createOntology.isPending ? 'Creating…' : 'Create label set'}
-        </button>
-      ) : (
-        <>
-          {classes && classes.length > 0 ? (
-            <ul className="space-y-2">
-              {classes.map(c => (
-                <li
-                  key={c.id}
-                  className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
-                >
-                  <span
-                    className="h-4 w-4 rounded-full border border-border-strong"
-                    style={{ backgroundColor: c.color }}
-                    aria-hidden
-                  />
-                  <span className="text-sm text-text-primary">{c.display_name}</span>
-                  <span className="text-xs text-text-muted font-mono">{c.class_key}</span>
-                  <button
-                    onClick={() => deleteClass.mutate(c.id)}
-                    disabled={deleteClass.isPending}
-                    className="ml-auto text-text-muted hover:text-error disabled:opacity-60"
-                    aria-label={`Delete ${c.display_name}`}
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-text-secondary">No classes yet. Add the first one below.</p>
-          )}
-
-          <form onSubmit={handleAdd} className="flex items-end gap-2">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-text-primary mb-1">Class key</label>
-              <input
-                type="text"
-                required
-                value={key}
-                onChange={e => setKey(e.target.value)}
-                placeholder="plane"
-                className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-text-primary mb-1">Display name</label>
-              <input
-                type="text"
-                value={displayName}
-                onChange={e => setDisplayName(e.target.value)}
-                placeholder="Plane"
-                className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Color</label>
-              <input
-                type="color"
-                value={color}
-                onChange={e => setColor(e.target.value)}
-                className="h-10 w-12 cursor-pointer rounded-lg border border-border-strong"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={createClass.isPending || !key.trim()}
-              className="bg-iris text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-iris-hover disabled:opacity-60 transition-colors"
-            >
-              {createClass.isPending ? 'Adding…' : 'Add'}
-            </button>
-          </form>
-          {createClass.isError && (
-            <p className="text-xs text-error">Couldn’t add class — the key may already exist.</p>
-          )}
-        </>
-      )}
-    </div>
-  )
-}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog } from '../ui/Dialog'
 import { Button } from '../ui'
 import { useDataSources } from '../../api/data-sources'
+import { useOntologies } from '../../api/ontologies'
 
 interface RunParamsDialogProps {
   params: string[]
@@ -15,6 +16,7 @@ interface RunParamsDialogProps {
 export function RunParamsDialog({ params, open, onConfirm, onCancel, loading, projectId }: RunParamsDialogProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const { data: dataSources } = useDataSources(projectId)
+  const { data: ontologies } = useOntologies()
 
   const allFilled = params.every((p) => (values[p] ?? '').trim() !== '')
 
@@ -40,7 +42,21 @@ export function RunParamsDialog({ params, open, onConfirm, onCancel, loading, pr
               <label className="text-xs font-medium text-text-primary" htmlFor={`param-${param}`}>
                 {param}
               </label>
-              {param === 'source_id' && dataSources && dataSources.length > 0 ? (
+              {param === 'ontology_id' && ontologies && ontologies.length > 0 ? (
+                <select
+                  id={`param-${param}`}
+                  value={values[param] ?? ''}
+                  onChange={(e) => setValues((v) => ({ ...v, [param]: e.target.value }))}
+                  className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-iris-500"
+                >
+                  <option value="">Select an ontology…</option>
+                  {ontologies.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name} (v{o.version})
+                    </option>
+                  ))}
+                </select>
+              ) : param === 'source_id' && dataSources && dataSources.length > 0 ? (
                 <select
                   id={`param-${param}`}
                   value={values[param] ?? ''}
