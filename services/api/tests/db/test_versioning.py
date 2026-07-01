@@ -78,7 +78,7 @@ async def test_commit_create(session: AsyncSession):
     """A Commit with all required FKs flushes successfully and is assigned an id."""
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
 
     commit = Commit(
         project_id=proj.id,
@@ -98,7 +98,7 @@ async def test_commit_message_default(session: AsyncSession):
     """When message is omitted the server default returns an empty string."""
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
 
     commit = Commit(
         project_id=proj.id,
@@ -126,7 +126,7 @@ async def test_commit_chain(session: AsyncSession):
     """A child Commit can reference a parent Commit via the self-referential FK."""
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
 
     commit1 = Commit(
         project_id=proj.id,
@@ -156,7 +156,7 @@ async def test_commit_stats_jsonb(session: AsyncSession):
     stats_payload = {"total": 100, "by_split": {"train": 80, "val": 20}}
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
 
     commit = Commit(
         project_id=proj.id,
@@ -205,7 +205,7 @@ async def test_commit_sample_create(session: AsyncSession):
     """A CommitSample with valid FKs flushes successfully and stores the split value."""
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
     commit = await make_commit(session, project_id=proj.id, dataset_id=ds.id, ontology_id=ont.id)
     sample = await make_sample(session, project_id=proj.id)
     rev = await _make_annotation_revision(session, proj.id, sample.id, ont.id)
@@ -228,7 +228,7 @@ async def test_commit_sample_duplicate_pk(session: AsyncSession):
     """Inserting two CommitSamples with the same (commit_id, sample_id) raises IntegrityError."""
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
     commit = await make_commit(session, project_id=proj.id, dataset_id=ds.id, ontology_id=ont.id)
     sample = await make_sample(session, project_id=proj.id)
     rev = await _make_annotation_revision(session, proj.id, sample.id, ont.id)
@@ -258,7 +258,7 @@ async def test_commit_sample_valid_splits(session: AsyncSession):
     """CommitSamples with split='train', 'val', 'test' all flush without error."""
     proj = await make_project(session)
     ds = await make_dataset(session, project_id=proj.id)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
     commit = await make_commit(session, project_id=proj.id, dataset_id=ds.id, ontology_id=ont.id)
 
     splits_inserted = []

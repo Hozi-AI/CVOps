@@ -63,7 +63,7 @@ async def test_annotation_revision_create(session: AsyncSession):
     """Creating a valid AnnotationRevision flushes successfully and stores revision_no."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev = await _make_revision(session, project.id, sample.id, ontology.id, revision_no=1)
     await session.flush()
@@ -76,7 +76,7 @@ async def test_annotation_revision_no_deleted_at(session: AsyncSession):
     """AnnotationRevision is append-only and must not have a deleted_at attribute."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev = await _make_revision(session, project.id, sample.id, ontology.id)
     await session.flush()
@@ -88,7 +88,7 @@ async def test_annotation_revision_no_updated_at(session: AsyncSession):
     """AnnotationRevision is append-only and must not have an updated_at attribute."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev = await _make_revision(session, project.id, sample.id, ontology.id)
     await session.flush()
@@ -100,7 +100,7 @@ async def test_annotation_revision_payload_jsonb(session: AsyncSession):
     """Payload is stored and retrieved as JSONB with correct nested values."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     payload = [
         {
@@ -125,7 +125,7 @@ async def test_annotation_revision_provenance_jsonb(session: AsyncSession):
     """Provenance is stored and retrieved as JSONB with correct field values."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     provenance = {"source": "model", "review_status": "unreviewed"}
     rev = await _make_revision(session, project.id, sample.id, ontology.id, provenance=provenance)
@@ -143,7 +143,7 @@ async def test_annotation_revision_incremental_revision_no(session: AsyncSession
     """Two revisions with revision_no=1 and revision_no=2 for the same sample both succeed."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev1 = await _make_revision(session, project.id, sample.id, ontology.id, revision_no=1)
     await session.flush()
@@ -160,7 +160,7 @@ async def test_annotation_revision_parent_revision_self_fk(session: AsyncSession
     """A revision can reference an earlier revision via the self-referential FK."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev1 = await _make_revision(session, project.id, sample.id, ontology.id, revision_no=1)
     await session.flush()
@@ -183,7 +183,7 @@ async def test_annotation_revision_invalid_parent_fk(session: AsyncSession):
     """A non-existent parent_revision_id raises IntegrityError."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     _rev = await _make_revision(
         session,
@@ -202,7 +202,7 @@ async def test_annotation_revision_invalid_parent_fk(session: AsyncSession):
 async def test_annotation_revision_sample_fk(session: AsyncSession):
     """A non-existent sample_id raises IntegrityError."""
     project = await make_project(session)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev = AnnotationRevision(
         project_id=project.id,
@@ -225,7 +225,7 @@ async def test_annotation_revision_created_at_auto(session: AsyncSession):
     """created_at is populated by the server default when not supplied explicitly."""
     project = await make_project(session)
     sample = await make_sample(session, project_id=project.id)
-    ontology = await make_ontology(session, project_id=project.id)
+    ontology = await make_ontology(session, org_id=project.org_id)
 
     rev = await _make_revision(session, project.id, sample.id, ontology.id)
     await session.flush()

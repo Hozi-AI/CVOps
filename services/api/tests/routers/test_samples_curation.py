@@ -205,7 +205,7 @@ async def test_from_samples_commit_includes_unannotated(factory) -> None:
 
     # Annotate exactly one sample + create an ontology + dataset.
     async with factory() as s:
-        ont = Ontology(project_id=project.id, name="default", version=1)
+        ont = Ontology(org_id=project.org_id, name="default", version=1)
         s.add(ont)
         await s.flush()
         s.add(
@@ -249,7 +249,7 @@ async def test_list_annotations_returns_list_payload(factory) -> None:
     schema typed payload as a dict, so any real list payload 500'd)."""
     user, project, _source, ids = await _seed(factory, n_samples=1)
     async with factory() as s:
-        ont = Ontology(project_id=project.id, name="default", version=1)
+        ont = Ontology(org_id=project.org_id, name="default", version=1)
         s.add(ont)
         await s.flush()
         s.add(

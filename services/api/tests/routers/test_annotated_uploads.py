@@ -71,7 +71,7 @@ async def _seed(
         project = Project(org_id=org.id, name=f"proj-{suffix}")
         s.add(project)
         await s.flush()
-        ont = Ontology(project_id=project.id, name=f"ont-{suffix}", version=ontology_version)
+        ont = Ontology(org_id=project.org_id, name=f"ont-{suffix}", version=ontology_version)
         s.add(ont)
         await s.flush()
         for i, key in enumerate(class_keys):

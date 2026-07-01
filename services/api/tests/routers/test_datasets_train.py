@@ -87,7 +87,7 @@ async def _seed(factory) -> tuple[User, Dataset, Commit, TrainingContainer]:
         project = Project(org_id=org.id, name=f"proj-{suffix}")
         s.add(project)
         await s.flush()
-        ontology = Ontology(project_id=project.id, name=f"ont-{suffix}", version=1)
+        ontology = Ontology(org_id=project.org_id, name=f"ont-{suffix}", version=1)
         s.add(ontology)
         dataset = Dataset(project_id=project.id, name=f"ds-{suffix}")
         s.add(dataset)
