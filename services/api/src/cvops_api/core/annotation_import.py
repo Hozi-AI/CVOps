@@ -156,7 +156,7 @@ async def _resolve_ontology(
             await session.execute(
                 select(Ontology).where(
                     Ontology.id == ontology_id,
-                    Ontology.project_id == project.id,
+                    Ontology.org_id == project.org_id,
                 )
             )
         ).scalar_one_or_none()

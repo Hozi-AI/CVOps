@@ -205,7 +205,7 @@ async def review_dataset(
         ontology_id = (
             await session.execute(
                 select(Ontology.id)
-                .where(Ontology.project_id == dataset.project_id, Ontology.deleted_at.is_(None))
+                .where(Ontology.org_id == proj.org_id, Ontology.deleted_at.is_(None))
                 .order_by(Ontology.version.desc())
                 .limit(1)
             )
