@@ -66,6 +66,9 @@ export function Sidebar() {
           <NavLink to="/cvat-models" className={navClass}>
             Deployed Models
           </NavLink>
+          <NavLink to="/ontologies" className={navClass}>
+            Label Sets
+          </NavLink>
         </nav>
 
         {projectId && <ProjectNav projectId={projectId} />}
