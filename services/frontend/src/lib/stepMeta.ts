@@ -11,7 +11,7 @@
  * `$run.params.<key>` (how the dispatcher seeds the entry step).
  */
 
-export type FieldWidget = 'text' | 'number' | 'range' | 'select' | 'textarea' | 'tags' | 'keyvalue'
+export type FieldWidget = 'text' | 'number' | 'range' | 'select' | 'textarea' | 'tags' | 'keyvalue' | 'ontology-picker'
 
 export interface FieldSpec {
   key: string
@@ -97,7 +97,7 @@ export const STEP_META: Record<string, StepMeta> = {
       { key: 'train_ratio', label: 'Train ratio', widget: 'range', min: 0.1, max: 0.9, step: 0.05 },
       { key: 'val_ratio', label: 'Val ratio', widget: 'range', min: 0.05, max: 0.5, step: 0.05 },
       { key: 'seed', label: 'Seed', widget: 'number', min: 0, placeholder: '42' },
-      { key: 'ontology_id', label: 'Ontology ID', widget: 'text', placeholder: 'uuid' },
+      { key: 'ontology_id', label: 'Ontology', widget: 'ontology-picker' },
       { key: 'message', label: 'Commit message', widget: 'textarea', placeholder: 'Describe this commit…' },
     ],
   },
@@ -110,7 +110,7 @@ export const STEP_META: Record<string, StepMeta> = {
     outputs: ['export_blob_hash', 'commit_id'],
     runParamInputs: ['commit_id'],
     fields: [
-      { key: 'ontology_id', label: 'Ontology override', help: 'Optional — defaults to the commit ontology.', widget: 'text', placeholder: 'uuid' },
+      { key: 'ontology_id', label: 'Ontology override', help: 'Optional — defaults to the commit ontology.', widget: 'ontology-picker' },
     ],
   },
   'step.train': {
