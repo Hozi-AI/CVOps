@@ -1,5 +1,7 @@
 # Bug Backlog — 2026-06-28
 
+**Status:** DONE
+
 ## BUG-1: WorkflowBuilder "Run workflow" fires with no params (FIXED, pending merge)
 
 **Symptom:** `Step 'extract' input resolution: Run param 'source_id' not found`  
