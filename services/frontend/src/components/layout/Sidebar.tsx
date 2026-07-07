@@ -69,6 +69,9 @@ export function Sidebar() {
           <NavLink to="/ontologies" className={navClass}>
             Label Sets
           </NavLink>
+          <NavLink to="/activity" className={navClass}>
+            Activity
+          </NavLink>
         </nav>
 
         {projectId && <ProjectNav projectId={projectId} />}
