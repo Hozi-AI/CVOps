@@ -48,6 +48,18 @@ class EventOut(BaseModel):
     created_at: datetime
 
 
+class ActivityEventOut(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    actor_id: uuid.UUID | None = None
+    actor_type: str | None = None
+    actor_email: str | None = None
+    entity_type: str
+    entity_id: uuid.UUID
+    action: str
+    payload: dict[str, Any] | None = None
+
+
 class GateResolve(BaseModel):
     resolution: str
 

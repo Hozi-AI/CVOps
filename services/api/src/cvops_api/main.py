@@ -23,6 +23,7 @@ from cvops_api.routers import (
     internal,
     cvat,
     viewer,
+    events,
 )
 
 
@@ -85,6 +86,7 @@ app.include_router(ontologies.router, prefix=API_V1, tags=["ontologies"])
 app.include_router(datasets.router, prefix=API_V1, tags=["datasets"])
 app.include_router(workflows.router, prefix=API_V1, tags=["workflows"])
 app.include_router(runs.router, prefix=API_V1, tags=["runs"])
+app.include_router(events.router, prefix=API_V1, tags=["events"])
 app.include_router(models.router, prefix=API_V1, tags=["models"])
 app.include_router(training_containers.router, prefix=API_V1, tags=["training-containers"])
 app.include_router(internal.router, prefix=f"{API_V1}/internal", tags=["internal"])
