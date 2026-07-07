@@ -14,19 +14,15 @@ Show class distribution, sample counts per split (train/val/test), and annotatio
 
 **Why it matters:** First thing you check before kicking off a train. Data is already in Postgres — mostly a query + chart.
 
-**Rough scope:** One SQL query aggregating `commit_samples + annotation_revisions`, one chart component on the commit page.
+**Rough scope:** `CommitStats` component + workflow-path stats already work. Only gap: the direct "from-samples" commit endpoint (`POST /projects/{id}/datasets/from-samples`) stores only `sample_count`, not `by_class`/`by_split`. One extra aggregation query there closes it.
 
 ---
 
 ## FEAT-2: Run retry
 
-**Status:** TODO
+**Status:** DONE
 
-A "Retry" button on a failed run that re-dispatches the same workflow with the same params.
-
-**Why it matters:** Async runs fail (network blip, CVAT down, etc.). Currently you rebuild the entire run from scratch.
-
-**Rough scope:** One endpoint `POST /runs/{id}/retry`, one button in the run detail UI.
+Already fully implemented: `POST /runs/{id}/retry` in `services/api/src/cvops_api/routers/runs.py:232` and `useRetryRun()` + button in `services/frontend/src/pages/RunView.tsx:42`.
 
 ---
 
@@ -44,7 +40,7 @@ Side-by-side view of two or more model versions — metrics, commit they trained
 
 ## FEAT-4: Activity / audit log UI
 
-**Status:** TODO
+**Status:** IN PROGRESS — spec approved, implementation plan not yet written
 
 A page (or panel) that surfaces the `events` table — who did what, when, on which resource.
 
