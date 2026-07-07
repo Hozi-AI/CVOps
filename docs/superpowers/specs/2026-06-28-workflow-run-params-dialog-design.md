@@ -1,7 +1,7 @@
 # Design: Workflow Run Params Dialog
 
 **Date:** 2026-06-28  
-**Status:** Approved
+**Status:** DONE
 
 ## Problem
 
