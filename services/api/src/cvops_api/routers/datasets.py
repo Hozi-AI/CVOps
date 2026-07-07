@@ -652,6 +652,7 @@ async def create_commit_from_samples(
             "branch": body.branch_name,
             "from_samples": True,
         },
+        org_id=current_user.org_id,
     )
     await session.commit()
     return CommitFromSamplesOut(

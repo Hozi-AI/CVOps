@@ -419,6 +419,7 @@ async def confirm_images(
             entity_id=src.id,
             action="images.uploaded",
             payload={"count": len(sample_ids), "group": group},
+            org_id=current_user.org_id,
         )
     await session.commit()
 
