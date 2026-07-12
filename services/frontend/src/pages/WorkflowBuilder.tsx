@@ -118,6 +118,21 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
   const [showIssues, setShowIssues] = useState(false)
   const [paramsDialogOpen, setParamsDialogOpen] = useState(false)
   const [pendingParams, setPendingParams] = useState<string[]>([])
+  const [nameValue, setNameValue] = useState(workflow?.name ?? '')
+
+  useEffect(() => {
+    if (workflow?.name) setNameValue(workflow.name)
+  }, [workflow?.name])
+
+  async function handleNameSave() {
+    const trimmed = nameValue.trim()
+    if (!trimmed || trimmed === workflow?.name) return
+    try {
+      await updateWorkflow.mutateAsync({ name: trimmed })
+    } catch {
+      setNameValue(workflow?.name ?? '')
+    }
+  }
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
 
@@ -262,8 +277,22 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
         </Button>
       </div>
 
+      <div className="absolute left-4 top-4 z-10 max-w-xs">
+        <input
+          className="w-full bg-transparent text-sm font-semibold text-text-primary outline-none border-b border-transparent hover:border-border focus:border-iris transition-colors"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          onBlur={handleNameSave}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') { setNameValue(workflow?.name ?? ''); e.currentTarget.blur() }
+          }}
+          aria-label="Workflow name"
+        />
+      </div>
+
       {nodes.length > 0 && (
-        <div className="absolute left-4 top-4 z-10 max-w-sm">
+        <div className="absolute left-4 top-12 z-10 max-w-sm">
           {issues.length === 0 ? (
             <div className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-success shadow-sm">
               Valid DAG · {nodes.length} step{nodes.length === 1 ? '' : 's'}

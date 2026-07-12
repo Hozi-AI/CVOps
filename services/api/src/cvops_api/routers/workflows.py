@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cvops_api.core.auth import get_current_user
@@ -89,7 +90,11 @@ async def create_workflow(
         version=1,
     )
     session.add(wf)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="A workflow with that name already exists in this project")
     return WorkflowOut.model_validate(wf)
 
 

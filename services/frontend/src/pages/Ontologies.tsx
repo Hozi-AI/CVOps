@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   useOntologies,
   useCreateOntology,
@@ -11,6 +12,8 @@ import {
   type Ontology,
   type LabelClass,
 } from '../api/ontologies'
+import { client } from '../lib/client'
+import { toast } from '../store/toast'
 import {
   Breadcrumbs,
   Button,
@@ -22,6 +25,13 @@ import {
   SkeletonList,
   ErrorState,
 } from '../components/ui'
+
+const LABEL_COLORS = [
+  '#e6194b','#3cb44b','#4363d8','#f58231','#911eb4',
+  '#42d4f4','#f032e6','#bfef45','#fabed4','#469990',
+  '#dcbeff','#9a6324','#fffac8','#800000','#aaffc3',
+  '#808000','#ffd8b1','#000075','#a9a9a9','#ffffff',
+]
 
 function LabelClassRow({ lc, ontologyId }: { lc: LabelClass; ontologyId: string }) {
   const [editing, setEditing] = useState(false)
@@ -250,6 +260,37 @@ function CreateOntologyDialog({ open, onClose }: { open: boolean; onClose: () =>
 export default function Ontologies() {
   const { data: ontologies, isLoading, isError, refetch } = useOntologies()
   const [createOpen, setCreateOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const importRef = useRef<HTMLInputElement>(null)
+  const qc = useQueryClient()
+
+  async function handleImportTxt(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const labels = text.split('\n').map(l => l.trim()).filter(Boolean)
+      if (!labels.length) { toast.error('Empty file', 'No class names found'); return }
+      const name = file.name.replace(/\.[^.]+$/, '') || 'Imported labels'
+      const { data: ont } = await client.post<Ontology>('/ontologies', { name })
+      await Promise.all(
+        labels.map((label, i) =>
+          client.post(`/ontologies/${ont.id}/classes`, {
+            class_key: label, display_name: label,
+            color: LABEL_COLORS[i % LABEL_COLORS.length], sort_order: i,
+          })
+        )
+      )
+      await qc.invalidateQueries({ queryKey: ['ontologies'] })
+      toast.success('Label set imported', `"${ont.name}" created with ${labels.length} classes`)
+    } catch (err) {
+      toast.error('Import failed', err instanceof Error ? err.message : String(err))
+    } finally {
+      setImporting(false)
+      e.target.value = ''
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -262,7 +303,13 @@ export default function Ontologies() {
             Org-wide label vocabularies — use one across any number of projects
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>+ New Label Set</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" loading={importing} onClick={() => importRef.current?.click()}>
+            Import .txt
+          </Button>
+          <input ref={importRef} type="file" accept=".txt,text/plain" className="hidden" onChange={handleImportTxt} />
+          <Button onClick={() => setCreateOpen(true)}>+ New Label Set</Button>
+        </div>
       </div>
 
       {isLoading && <SkeletonList rows={3} />}
