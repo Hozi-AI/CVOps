@@ -20,10 +20,28 @@ with open(Path(__file__).parent / "schemas" / "import_dataset.json") as _f:
     _SCHEMA = json.load(_f)
 
 
+def detect_split(img_path: Path, root: Path) -> str | None:
+    """Return 'train'/'val'/'test' if the image lives under a known split folder, else None."""
+    for part in img_path.relative_to(root).parts[:-1]:
+        if part == "train":
+            return "train"
+        if part in ("val", "valid", "validation"):
+            return "val"
+        if part == "test":
+            return "test"
+    return None
+
+
 def detect_format(root: Path) -> Literal["yolo", "coco", "raw"]:
     """Inspect a directory and return the dataset format."""
     if (root / "data.yaml").exists():
         return "yolo"
+    # YOLO without data.yaml: labels/ dir at root or inside split subdirs
+    if (root / "labels").is_dir():
+        return "yolo"
+    for split_name in ("train", "val", "test", "valid"):
+        if (root / split_name / "labels").is_dir():
+            return "yolo"
     for p in root.rglob("*.json"):
         try:
             doc = json.loads(p.read_text())
@@ -44,7 +62,7 @@ def parse_yolo(root: Path, class_names: list[str]) -> dict[str, list[dict]]:
     labels_dir = root / "labels"
     if not labels_dir.is_dir():
         return result
-    for txt in labels_dir.glob("*.txt"):
+    for txt in labels_dir.rglob("*.txt"):
         anns: list[dict] = []
         for line in txt.read_text().splitlines():
             parts = line.strip().split()
@@ -198,14 +216,24 @@ class ImportDatasetStep(Step):
         # ── 4. Parse annotations ──────────────────────────────────────────
         ann_by_stem: dict[str, list[dict]] = {}
         ann_by_filename: dict[str, list[dict]] = {}
+        class_names_from_yaml: list[str] = []
         if ontology_id:
             if fmt == "yolo":
                 data_yaml = root / "data.yaml"
-                class_names: list[str] = []
                 if data_yaml.exists():
                     doc = yaml.safe_load(data_yaml.read_text())
-                    class_names = doc.get("names", [])
-                ann_by_stem = parse_yolo(root, class_names)
+                    raw_names = doc.get("names", [])
+                    # Newer Ultralytics format uses a dict: {0: 'car', 1: 'person'}
+                    if isinstance(raw_names, dict):
+                        max_idx = max((int(k) for k in raw_names), default=-1)
+                        class_names_from_yaml = [raw_names.get(i, raw_names.get(str(i), "")) for i in range(max_idx + 1)]
+                    else:
+                        class_names_from_yaml = list(raw_names)
+                if not class_names_from_yaml and class_key_map:
+                    # No data.yaml (or empty names): fall back to ontology order so
+                    # index 0 maps to the first ontology class, 1 to the second, etc.
+                    class_names_from_yaml = list(class_key_map.keys())
+                ann_by_stem = parse_yolo(root, class_names_from_yaml)
             elif fmt == "coco":
                 ann_by_filename = parse_coco(root)
 
@@ -253,6 +281,9 @@ class ImportDatasetStep(Step):
 
         sample_ids: list[str] = []
         revision_ids: list[str] = []
+        folder_splits: dict[str, str] = {}
+        n_labels_found = 0
+        n_class_mismatch = 0
 
         for img_path in image_files:
             img_bytes = img_path.read_bytes()
@@ -284,13 +315,20 @@ class ImportDatasetStep(Step):
             else:
                 sid = str(new[0])
             sample_ids.append(sid)
+            split = detect_split(img_path, root)
+            if split:
+                folder_splits[sid] = split
 
             if not ontology_id:
                 continue
 
             anns = ann_by_stem.get(img_path.stem) or ann_by_filename.get(img_path.name) or []
+            if anns:
+                n_labels_found += 1
             valid_anns = [a for a in anns if a["class_key"] in class_key_map]
             if not valid_anns:
+                if anns:
+                    n_class_mismatch += 1
                 continue
 
             rno_row = (await ctx.session.execute(
@@ -322,4 +360,21 @@ class ImportDatasetStep(Step):
             )
             revision_ids.append(rid)
 
-        return {"sample_ids": sample_ids, "annotation_revision_ids": revision_ids}
+        result: dict = {
+            "sample_ids": sample_ids,
+            "annotation_revision_ids": revision_ids,
+            "import_stats": {
+                "format": fmt,
+                "images": len(sample_ids),
+                "labels_matched": n_labels_found,
+                "class_mismatch": n_class_mismatch,
+                "annotations_created": len(revision_ids),
+                "class_names_in_yaml": class_names_from_yaml,
+                "ontology_class_keys": list(class_key_map.keys()),
+            },
+        }
+        # Only propagate folder splits when every sample resolved to a known split dir.
+        # A partial map (mixed flat/split trees) would silently mis-assign the flat ones.
+        if folder_splits and len(folder_splits) == len(sample_ids):
+            result["splits"] = folder_splits
+        return result

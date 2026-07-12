@@ -116,9 +116,14 @@ class CommitDatasetStep(Step):
         ).all()
         source_of = {str(sid): str(src) for sid, src in src_rows}
 
-        # ── Assign splits via the registered strategy ───────────────────────
-        assign = split_strategies.get(strategy_key)
-        splits = assign(committed, source_of, train_ratio, val_ratio, seed)
+        # ── Assign splits — preset from import takes priority ───────────────
+        preset: dict[str, str] = inputs.get("splits") or {}
+        if preset:
+            # ponytail: fall back to "train" for any sample not in preset (shouldn't happen)
+            splits = {sid: preset.get(sid, "train") for sid in committed}
+        else:
+            assign = split_strategies.get(strategy_key)
+            splits = assign(committed, source_of, train_ratio, val_ratio, seed)
 
         # ── Resolve / create dataset ────────────────────────────────────────
         dataset_id = await self._get_or_create_dataset(

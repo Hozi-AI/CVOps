@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { client } from '../lib/client'
 import type { CursorPage, Sample } from './samples'
@@ -151,6 +152,81 @@ export function useTrainCommit(datasetId: string | undefined) {
       return data
     },
   })
+}
+
+/** Dispatch an export_yolo run, poll until done, then trigger a browser download. */
+export function useDownloadCommit(datasetId: string | undefined, commitId: string | undefined) {
+  const [runId, setRunId] = useState<string | null>(null)
+  const [dispatching, setDispatching] = useState(false)
+
+  // Check for a cached export on mount so the button can show "Download" immediately.
+  const cached = useQuery<{ url: string; blob_hash: string }>({
+    queryKey: ['commit-export-url', datasetId, commitId],
+    queryFn: async () => {
+      const { data } = await client.get(`/datasets/${datasetId}/commits/${commitId}/export-url`)
+      return data
+    },
+    enabled: !!datasetId && !!commitId,
+    retry: false,
+  })
+
+  const poll = useQuery({
+    queryKey: ['export-poll', runId],
+    queryFn: async () => {
+      const { data } = await client.get<{ run: RunOut }>(`/runs/${runId}`)
+      return data
+    },
+    enabled: !!runId,
+    refetchInterval: (q) => {
+      const s = q.state.data?.run?.status
+      return !s || s === 'pending' || s === 'running' ? 2000 : false
+    },
+  })
+
+  function _download(url: string) {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `commit-${commitId!.slice(0, 8)}.tar.gz`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  // When the polled run finishes, fetch the presigned URL and trigger download.
+  useEffect(() => {
+    const s = poll.data?.run?.status
+    if (!runId || !s) return
+    if (s === 'succeeded') {
+      let cancelled = false
+      client
+        .get<{ url: string }>(`/datasets/${datasetId}/commits/${commitId}/export-url`)
+        .then(({ data }) => {
+          if (cancelled) return
+          _download(data.url)
+          cached.refetch()
+          setRunId(null)
+        })
+      return () => { cancelled = true }
+    }
+    if (s === 'failed' || s === 'cancelled') setRunId(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poll.data?.run?.status, runId])
+
+  async function trigger() {
+    if (!datasetId || !commitId) return
+    if (cached.data) { _download(cached.data.url); return }
+    setDispatching(true)
+    try {
+      const { data: run } = await client.post<RunOut>(`/datasets/${datasetId}/commits/${commitId}/export`)
+      setRunId(run.id)
+    } finally {
+      setDispatching(false)
+    }
+  }
+
+  const busy = dispatching || !!runId
+  const label = busy ? 'Exporting…' : cached.data ? 'Download YOLO' : 'Export YOLO'
+  return { trigger, busy, label }
 }
 
 export function useCreateDataset() {

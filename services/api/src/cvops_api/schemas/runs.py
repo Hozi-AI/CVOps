@@ -78,4 +78,6 @@ class ImportRequest(BaseModel):
     format: str = "auto"
     ontology_id: uuid.UUID | None = None
     dataset_name: str = "Imported Dataset"
+    commit_message: str = "Imported dataset"
     review: bool = False
+    split_strategy: dict[str, Any] = {}

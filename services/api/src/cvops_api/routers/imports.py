@@ -118,8 +118,10 @@ async def import_dataset(
     commit_config: dict[str, Any] = {
         "dataset_name": body.dataset_name,
         "branch_name": "main",
-        "message": "Imported dataset",
+        "message": body.commit_message or "Imported dataset",
         "ontology_id": str(body.ontology_id),
+        "train_ratio": body.split_strategy.get("train_ratio", 0.8),
+        "val_ratio": body.split_strategy.get("val_ratio", 0.2),
     }
 
     if body.review:
@@ -146,6 +148,7 @@ async def import_dataset(
                 "inputs": {
                     "sample_ids": "$steps.import.outputs.sample_ids",
                     "annotation_revision_ids": "$steps.review.outputs.annotation_revision_ids",
+                    "splits": "$steps.import.outputs.splits",
                 },
             },
         ]
@@ -165,6 +168,7 @@ async def import_dataset(
                 "inputs": {
                     "sample_ids": "$steps.import.outputs.sample_ids",
                     "annotation_revision_ids": "$steps.import.outputs.annotation_revision_ids",
+                    "splits": "$steps.import.outputs.splits",
                 },
             },
         ]

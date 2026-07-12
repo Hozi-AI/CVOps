@@ -8,7 +8,9 @@ export interface ImportRequest {
   format?: string
   ontology_id?: string
   dataset_name?: string
+  commit_message?: string
   review?: boolean
+  split_strategy?: { train_ratio?: number; val_ratio?: number }
 }
 
 export interface ImportRun {
@@ -41,6 +43,7 @@ export function useImportDataset(projectId: string | undefined) {
       datasetName?: string
       format?: string
       review?: boolean
+      splitStrategy?: { train_ratio?: number; val_ratio?: number }
     }): Promise<ImportRun> => {
       if (!projectId) throw new Error('projectId is required')
 
@@ -57,6 +60,7 @@ export function useImportDataset(projectId: string | undefined) {
         dataset_name: vars.datasetName ?? 'Imported Dataset',
         format: vars.format ?? 'auto',
         review: vars.review ?? false,
+        split_strategy: vars.splitStrategy,
       } satisfies ImportRequest)
       return data
     },
@@ -70,16 +74,20 @@ export function useImportFromFolder(projectId: string | undefined) {
       folderPath: string
       ontologyId: string
       datasetName?: string
+      commitMessage?: string
       format?: string
       review?: boolean
+      splitStrategy?: { train_ratio?: number; val_ratio?: number }
     }): Promise<ImportRun> => {
       if (!projectId) throw new Error('projectId is required')
       const { data } = await client.post<ImportRun>(`/projects/${projectId}/imports`, {
         folder_path: vars.folderPath,
         ontology_id: vars.ontologyId,
         dataset_name: vars.datasetName ?? 'Imported Dataset',
+        commit_message: vars.commitMessage,
         format: vars.format ?? 'auto',
         review: vars.review ?? false,
+        split_strategy: vars.splitStrategy,
       } satisfies ImportRequest)
       return data
     },

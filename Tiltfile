@@ -566,7 +566,7 @@ if ENABLE_CVAT:
         deps=['services/worker-cvat/yolo-base.Dockerfile'],
         labels=['3-cvat'],
         resource_deps=['cvat-network'],
-        auto_init=not cfg.get('no-yolo-base'),
+        auto_init=not (cfg.get('no-yolo-base') or _truthy(env.get('CVOPS_NO_YOLO_BASE', ''))),
     )
 
     worker_cvat_env = dict(api_env)
@@ -605,7 +605,7 @@ if ENABLE_CVAT:
         # bootstrap, so a slow or failing CVAT stack never blocks the worker. It
         # connects to CVAT lazily, per review/deploy doorbell, and surfaces any CVAT
         # error on that run instead.
-        resource_deps=['postgres', 'redis', 'garage-bootstrap', 'steps-install', 'worker-cvat-install', 'nuctl-install', 'docker-socket-perms', 'migrate-up', 'yolo-base-image'],
+        resource_deps=['postgres', 'redis', 'garage-bootstrap', 'steps-install', 'worker-cvat-install', 'nuctl-install', 'docker-socket-perms', 'migrate-up'],
         labels=['4-cvat-app'],
     )
 

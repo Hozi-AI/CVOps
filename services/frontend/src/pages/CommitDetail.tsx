@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useCommit, useCommitSamples, useDataset, useTrainCommit } from '../api/datasets'
+import { useCommit, useCommitSamples, useDataset, useTrainCommit, useDownloadCommit } from '../api/datasets'
 import { useTrainingContainers } from '../api/training-containers'
 import { usePinProject } from '../lib/useActiveProject'
 import { icdInputsToRjsfSchema } from '../lib/icdSchema'
@@ -181,6 +181,7 @@ export default function CommitDetail() {
   const { data: dataset } = useDataset(datasetId)
   const commitSamples = useCommitSamples(datasetId, commitId)
   const [trainOpen, setTrainOpen] = useState(false)
+  const dl = useDownloadCommit(datasetId, commitId)
   usePinProject(dataset?.project_id)
 
   if (isLoading) {
@@ -208,9 +209,14 @@ export default function CommitDetail() {
             { label: commitId?.slice(0, 8) ?? '', mono: true },
           ]}
         />
-        <Button size="sm" onClick={() => setTrainOpen(true)}>
-          Train
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" loading={dl.busy} onClick={dl.trigger}>
+            {dl.label}
+          </Button>
+          <Button size="sm" onClick={() => setTrainOpen(true)}>
+            Train
+          </Button>
+        </div>
       </div>
 
       <Card className="mb-4 p-6">

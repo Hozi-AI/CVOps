@@ -18,7 +18,6 @@ import TrainingContainers from './pages/TrainingContainers'
 import CvatModels from './pages/CvatModels'
 import Ontologies from './pages/Ontologies'
 import Activity from './pages/Activity'
-import ImportDataset from './pages/ImportDataset'
 import ProjectSettings from './pages/ProjectSettings'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -74,7 +73,6 @@ export default function App() {
         <Route path="/projects/:id/models"                   element={<Models />} />
         <Route path="/models/:id"                            element={<ModelDetail />} />
         <Route path="/projects/:id/training-containers"      element={<TrainingContainers />} />
-        <Route path="/projects/:id/import"                   element={<ImportDataset />} />
         <Route path="/projects/:id/settings"                 element={<ProjectSettings />} />
       </Route>
     </Routes>
