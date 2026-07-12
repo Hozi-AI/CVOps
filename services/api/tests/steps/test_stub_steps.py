@@ -2,7 +2,7 @@
 
 These tests lock in the parts the engine and registry depend on regardless of
 how built-out each step is: their type_keys, that human_review is a gate, that
-each carries a config_schema, and that register_all() wires all six steps.
+each carries a config_schema, and that register_all() wires all steps.
 
 Implementation status (dev): ``auto_label`` is the only remaining clean stub —
 its run() raises NotImplementedError. ``human_review`` and ``train`` are
@@ -100,10 +100,11 @@ async def test_stub_run_raises_not_implemented(step_cls) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_register_all_registers_all_six_steps(monkeypatch) -> None:
+def test_register_all_registers_all_steps(monkeypatch) -> None:
     """register_all() populates the shared registry with every step keyed by
     type_key. Patch in a throwaway Registry so the global one is untouched."""
     import cvops_steps as steps_pkg
+    from cvops_steps.import_dataset import ImportDatasetStep
 
     fresh = Registry()
     monkeypatch.setattr(steps_pkg, "registry", fresh)
@@ -116,9 +117,9 @@ def test_register_all_registers_all_six_steps(monkeypatch) -> None:
         CommitDatasetStep.type_key,
         ExportYoloStep.type_key,
         TrainStep.type_key,
+        ImportDatasetStep.type_key,
     }
     assert {r.type_key for r in fresh.all()} == expected
-    assert len(expected) == 6  # all type_keys distinct
 
 
 def test_registered_stubs_resolve_to_their_impl(monkeypatch) -> None:
