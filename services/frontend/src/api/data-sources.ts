@@ -185,6 +185,7 @@ export function useUploadImages(projectId: string | undefined) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['data-sources', projectId] })
       qc.invalidateQueries({ queryKey: ['samples', projectId] })
+      qc.invalidateQueries({ queryKey: ['events'] })
     },
   })
 }

@@ -141,6 +141,7 @@ def envreq(key):
 config.define_bool('cvat')
 config.define_bool('training')
 config.define_bool('heavy')
+config.define_bool('no-yolo-base')
 cfg = config.parse()
 
 def _truthy(v):
@@ -565,6 +566,7 @@ if ENABLE_CVAT:
         deps=['services/worker-cvat/yolo-base.Dockerfile'],
         labels=['3-cvat'],
         resource_deps=['cvat-network'],
+        auto_init=not cfg.get('no-yolo-base'),
     )
 
     worker_cvat_env = dict(api_env)
