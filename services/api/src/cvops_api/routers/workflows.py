@@ -65,7 +65,7 @@ async def create_workflow(
 ) -> WorkflowOut:
     await _check_project(project_id, current_user, session)
 
-    # Validate step type_keys exist in registry
+    # Validate step type_keys exist and configs satisfy their schema
     for step in body.definition.get("steps", []):
         try:
             registry.resolve(step["type"])
@@ -73,6 +73,13 @@ async def create_workflow(
             raise HTTPException(
                 status_code=422,
                 detail=f"Unknown step type: {step['type']!r}",
+            )
+        try:
+            registry.validate_config(step["type"], step.get("config", {}))
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=422,
+                detail=f"Step '{step.get('id', step['type'])}' config invalid: {exc}",
             )
 
     wf = Workflow(
@@ -116,7 +123,7 @@ async def update_workflow(
     if body.name is not None:
         wf.name = body.name
     if body.definition is not None:
-        # Validate new step types
+        # Validate new step types and configs
         for step in body.definition.get("steps", []):
             try:
                 registry.resolve(step["type"])
@@ -124,6 +131,13 @@ async def update_workflow(
                 raise HTTPException(
                     status_code=422,
                     detail=f"Unknown step type: {step['type']!r}",
+                )
+            try:
+                registry.validate_config(step["type"], step.get("config", {}))
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Step '{step.get('id', step['type'])}' config invalid: {exc}",
                 )
         wf.definition = body.definition
         wf.version += 1
