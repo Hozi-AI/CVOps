@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useDatasets } from '../api/datasets'
-import { Breadcrumbs, Card, EmptyState, ErrorState, SkeletonList } from '../components/ui'
+import { Breadcrumbs, Button, Card, EmptyState, ErrorState, SkeletonList } from '../components/ui'
+import { ImportDatasetDialog } from '../components/dataset/ImportDatasetDialog'
 
 export default function Datasets() {
   const { id: projectId } = useParams<{ id: string }>()
   const { data: datasets, isLoading, isError, refetch } = useDatasets(projectId)
+  const [importing, setImporting] = useState(false)
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -12,7 +15,18 @@ export default function Datasets() {
         items={[{ label: 'Project', to: `/projects/${projectId}` }, { label: 'Datasets' }]}
       />
 
-      <h2 className="mb-4 text-xl font-bold text-text-primary">Datasets</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold text-text-primary">Datasets</h2>
+        <Button size="sm" onClick={() => setImporting(true)}>Import Dataset</Button>
+      </div>
+
+      {projectId && (
+        <ImportDatasetDialog
+          projectId={projectId}
+          open={importing}
+          onClose={() => setImporting(false)}
+        />
+      )}
 
       {isLoading && <SkeletonList rows={3} />}
 

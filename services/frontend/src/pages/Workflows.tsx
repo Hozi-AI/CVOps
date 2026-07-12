@@ -11,9 +11,13 @@ export default function Workflows() {
 
   async function handleNew() {
     if (!projectId) return
+    const taken = new Set(workflows?.map(w => w.name) ?? [])
+    let name = 'New workflow'
+    let i = 2
+    while (taken.has(name)) name = `New workflow (${i++})`
     const wf = await createWorkflow.mutateAsync({
       projectId,
-      name: 'New workflow',
+      name,
       definition: { steps: [], edges: [] },
     })
     navigate(`/workflows/${wf.id}`)

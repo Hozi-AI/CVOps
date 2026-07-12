@@ -91,6 +91,7 @@ async def create_tag(
         entity_type="tag",
         entity_id=tag.id,
         action="tag.created",
+        org_id=current_user.org_id,
     )
     await session.commit()
     await session.refresh(tag)
@@ -117,6 +118,7 @@ async def update_tag(
         entity_type="tag",
         entity_id=tag.id,
         action="tag.updated",
+        org_id=current_user.org_id,
     )
     await session.commit()
     await session.refresh(tag)
@@ -140,6 +142,7 @@ async def delete_tag(
         entity_type="tag",
         entity_id=tag.id,
         action="tag.deleted",
+        org_id=current_user.org_id,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -179,6 +182,7 @@ async def add_sample_tags(
             entity_type="sample",
             entity_id=sample.id,
             action="sample.tags_added",
+            org_id=current_user.org_id,
         )
         await session.commit()
 
@@ -207,6 +211,7 @@ async def remove_sample_tag(
         entity_type="sample",
         entity_id=sample.id,
         action="sample.tag_removed",
+        org_id=current_user.org_id,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

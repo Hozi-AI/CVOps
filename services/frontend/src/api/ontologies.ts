@@ -3,7 +3,7 @@ import { client } from '../lib/client'
 
 export interface Ontology {
   id: string
-  project_id: string
+  org_id: string
   name: string
   version: number
   created_at: string
@@ -18,25 +18,45 @@ export interface LabelClass {
   sort_order: number
 }
 
-export function useOntologies(projectId: string | undefined) {
+export function useOntologies() {
   return useQuery<Ontology[]>({
-    queryKey: ['ontologies', projectId],
+    queryKey: ['ontologies'],
     queryFn: async () => {
-      const { data } = await client.get<Ontology[]>(`/projects/${projectId}/ontologies`)
+      const { data } = await client.get<Ontology[]>('/ontologies')
       return data
     },
-    enabled: !!projectId,
   })
 }
 
-export function useCreateOntology(projectId: string | undefined) {
+export function useCreateOntology() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: { name: string }) => {
-      const { data } = await client.post<Ontology>(`/projects/${projectId}/ontologies`, body)
+      const { data } = await client.post<Ontology>('/ontologies', body)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ontologies', projectId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ontologies'] }),
+  })
+}
+
+export function useUpdateOntology(ontologyId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { name: string }) => {
+      const { data } = await client.patch<Ontology>(`/ontologies/${ontologyId}`, body)
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ontologies'] }),
+  })
+}
+
+export function useDeleteOntology() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (ontologyId: string) => {
+      await client.delete(`/ontologies/${ontologyId}`)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ontologies'] }),
   })
 }
 
@@ -61,6 +81,26 @@ export function useCreateLabelClass(ontologyId: string | undefined) {
       sort_order: number
     }) => {
       const { data } = await client.post<LabelClass>(`/ontologies/${ontologyId}/classes`, body)
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['label-classes', ontologyId] }),
+  })
+}
+
+export function useUpdateLabelClass(ontologyId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      classId,
+      body,
+    }: {
+      classId: string
+      body: { display_name?: string; color?: string; sort_order?: number }
+    }) => {
+      const { data } = await client.patch<LabelClass>(
+        `/ontologies/${ontologyId}/classes/${classId}`,
+        body,
+      )
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['label-classes', ontologyId] }),

@@ -16,6 +16,8 @@ import Models from './pages/Models'
 import ModelDetail from './pages/ModelDetail'
 import TrainingContainers from './pages/TrainingContainers'
 import CvatModels from './pages/CvatModels'
+import Ontologies from './pages/Ontologies'
+import Activity from './pages/Activity'
 import ProjectSettings from './pages/ProjectSettings'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -49,6 +51,8 @@ export default function App() {
         <Route path="/" element={<Navigate to="/projects" replace />} />
         <Route path="/projects"                              element={<Projects />} />
         <Route path="/cvat-models"                           element={<CvatModels />} />
+        <Route path="/ontologies"                            element={<Ontologies />} />
+        <Route path="/activity"                              element={<Activity />} />
         <Route path="/projects/:id"                          element={<Project />} />
         <Route path="/projects/:id/data-sources"             element={<DataSources />} />
         <Route path="/projects/:id/samples"                  element={<SampleBrowser />} />

@@ -23,6 +23,8 @@ from cvops_api.routers import (
     internal,
     cvat,
     viewer,
+    events,
+    imports,
 )
 
 
@@ -85,10 +87,12 @@ app.include_router(ontologies.router, prefix=API_V1, tags=["ontologies"])
 app.include_router(datasets.router, prefix=API_V1, tags=["datasets"])
 app.include_router(workflows.router, prefix=API_V1, tags=["workflows"])
 app.include_router(runs.router, prefix=API_V1, tags=["runs"])
+app.include_router(events.router, prefix=API_V1, tags=["events"])
 app.include_router(models.router, prefix=API_V1, tags=["models"])
 app.include_router(training_containers.router, prefix=API_V1, tags=["training-containers"])
 app.include_router(internal.router, prefix=f"{API_V1}/internal", tags=["internal"])
 app.include_router(cvat.router, prefix=API_V1, tags=["cvat"])
+app.include_router(imports.router, prefix=API_V1, tags=["imports"])
 # Viewer is a human-facing server-rendered page, not part of the versioned JSON
 # API — it stays at root (`/dataset`) with its own nginx pass-through.
 app.include_router(viewer.router, prefix="", tags=["viewer"])

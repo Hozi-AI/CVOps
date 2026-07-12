@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_STEP_REF = re.compile(r"^\$steps\.([^.]+)\.outputs\.(.+)$")
+_STEP_REF = re.compile(r"^\$steps\.(.+)\.outputs\.([^.]+)$")
 _PARAM_REF = re.compile(r"^\$run\.params\.(.+)$")
 
 
@@ -40,6 +40,8 @@ def resolve_refs(
             if name not in run_params:
                 raise ResolutionError(f"Run param '{name}' not found")
             return run_params[name]
+        if value.startswith("$"):
+            raise ResolutionError(f"Unresolved ref: {value!r}")
         return value
     if isinstance(value, dict):
         return {k: resolve_refs(v, step_outputs, run_params) for k, v in value.items()}

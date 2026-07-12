@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useCommitDiff, useCommitSamples, type Commit } from '../../api/datasets'
+import { useCommitDiff, useCommitSamples, useDownloadCommit, type Commit } from '../../api/datasets'
 import { useDataSources } from '../../api/data-sources'
 import { useThumbnailUrl, type Sample } from '../../api/samples'
 import { cn } from '../../lib/cn'
@@ -212,6 +212,7 @@ export function CommitContents({
 }) {
   const q = useCommitSamples(datasetId, commitId)
   const { data: sources } = useDataSources(projectId)
+  const dl = useDownloadCommit(datasetId, commitId)
   const [view, setView] = useState<ViewKey>('files')
   const [groupBy, setGroupBy] = useState<GroupKey>('source')
   const [openIndex, setOpenIndex] = useState<number | null>(null)
@@ -283,11 +284,14 @@ export function CommitContents({
             {commit && ` · ${new Date(commit.created_at).toLocaleString()}`}
           </p>
         </div>
-        <Link to={`/datasets/${datasetId}/commits/${commitId}`} className="shrink-0">
-          <Button size="sm" variant="secondary">
-            Open detail
+        <div className="flex shrink-0 gap-2">
+          <Button size="sm" variant="secondary" loading={dl.busy} onClick={dl.trigger}>
+            {dl.label}
           </Button>
-        </Link>
+          <Link to={`/datasets/${datasetId}/commits/${commitId}`}>
+            <Button size="sm" variant="secondary">Open detail</Button>
+          </Link>
+        </div>
       </div>
 
       {/* View toggle — full dataset state ("Files") vs. diff against parent ("Changes"). */}

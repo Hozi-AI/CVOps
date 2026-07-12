@@ -1,7 +1,7 @@
 # Design Spec — services/worker-training
 
 **Date:** 2026-06-14
-**Status:** Approved
+**Status:** DONE
 
 ---
 

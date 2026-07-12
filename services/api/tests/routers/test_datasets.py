@@ -126,7 +126,7 @@ async def _seed(
         if with_commit:
             ont = None
             if with_ontology:
-                ont = Ontology(project_id=project.id, name=f"ont-{suffix}", version=1)
+                ont = Ontology(org_id=project.org_id, name=f"ont-{suffix}", version=1)
                 s.add(ont)
             ds = DataSource(project_id=project.id, type="video", status="uploaded")
             s.add(ds)

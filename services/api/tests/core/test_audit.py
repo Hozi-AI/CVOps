@@ -127,6 +127,30 @@ async def test_emit_event_actor_id_nullable(session: AsyncSession) -> None:
     assert row.action == "created"
 
 
+async def test_emit_event_writes_org_id(session: AsyncSession) -> None:
+    """org_id kwarg is stored in the events row."""
+    import uuid as _uuid
+    from sqlalchemy import select as _select
+    from cvops_api.db.models.runs import Event
+
+    org_id = _uuid.uuid4()
+    entity_id = _uuid.uuid4()
+    await emit_event(
+        session,
+        actor_id=None,
+        actor_type="system",
+        entity_type="run",
+        entity_id=entity_id,
+        action="run.started",
+        org_id=org_id,
+    )
+    await session.flush()
+    row = (await session.execute(
+        _select(Event).where(Event.entity_id == entity_id)
+    )).scalar_one()
+    assert row.org_id == org_id
+
+
 async def test_emit_event_multiple_events(session: AsyncSession) -> None:
     """Emitting three events for the same entity_id should produce three rows."""
     entity_id = _entity_id()

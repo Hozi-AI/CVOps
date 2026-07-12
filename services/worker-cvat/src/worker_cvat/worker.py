@@ -193,10 +193,15 @@ async def _http_server_loop(stop: asyncio.Event) -> None:
         _build_http_app(), host="0.0.0.0", port=HTTP_PORT, log_level="warning"
     )
     server = uvicorn.Server(config)
-    serve_task = asyncio.create_task(server.serve())
-    await stop.wait()
-    server.should_exit = True
-    await serve_task
+    try:
+        serve_task = asyncio.create_task(server.serve())
+        await stop.wait()
+        server.should_exit = True
+        await serve_task
+    except (OSError, SystemExit) as exc:
+        # ponytail: non-fatal — HTTP server is only needed for model deployment,
+        # not for the CVAT review gate. Log and let the consume loop keep running.
+        print(f"[worker] HTTP server on :{HTTP_PORT} unavailable: {exc}", flush=True)
 
 
 async def run() -> None:

@@ -134,8 +134,9 @@ class HumanReviewStep(Step):
         ont_id = (
             await session.execute(
                 text(
-                    "SELECT o.id FROM ontologies o JOIN projects p ON p.id = o.project_id "
-                    "WHERE o.project_id = CAST(:pid AS uuid) AND o.deleted_at IS NULL "
+                    "SELECT o.id FROM ontologies o "
+                    "JOIN projects p ON p.org_id = o.org_id "
+                    "WHERE p.id = CAST(:pid AS uuid) AND o.deleted_at IS NULL "
                     "ORDER BY (p.default_ontology_id = o.id) DESC NULLS LAST, o.version DESC "
                     "LIMIT 1"
                 ),

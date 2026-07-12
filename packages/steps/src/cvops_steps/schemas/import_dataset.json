@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Import Dataset Config",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "enum": ["auto", "yolo", "coco", "raw"],
+      "default": "auto",
+      "description": "Dataset format. 'auto' inspects the directory."
+    },
+    "ontology_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "If omitted, images are ingested as samples but annotations are skipped."
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

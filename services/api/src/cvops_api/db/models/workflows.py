@@ -1,6 +1,6 @@
 import uuid
 from typing import Any
-from sqlalchemy import ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from cvops_api.db.base import Base, EntityBase
@@ -27,7 +27,16 @@ class Workflow(Base, EntityBase):
         server_default="1",
     )
 
-    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_workflows_project_name"),)
+    __table_args__ = (
+        # ponytail: partial index so soft-deleted workflows don't block name reuse
+        Index(
+            "uq_workflows_project_name",
+            "project_id",
+            "name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     def __repr__(self) -> str:
         return (

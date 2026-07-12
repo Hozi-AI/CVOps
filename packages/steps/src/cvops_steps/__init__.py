@@ -5,6 +5,7 @@ from cvops_steps.human_review import HumanReviewStep
 from cvops_steps.commit_dataset import CommitDatasetStep
 from cvops_steps.export_yolo import ExportYoloStep
 from cvops_steps.train import TrainStep
+from cvops_steps.import_dataset import ImportDatasetStep
 
 def register_all() -> None:
     """Called at API startup to populate the in-memory registry."""
@@ -15,5 +16,6 @@ def register_all() -> None:
         CommitDatasetStep(),
         ExportYoloStep(),
         TrainStep(),
+        ImportDatasetStep(),
     ]:
         registry.register(step)

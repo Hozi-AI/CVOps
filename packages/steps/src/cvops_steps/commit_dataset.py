@@ -39,7 +39,10 @@ class CommitDatasetStep(Step):
         from sqlalchemy import text  # noqa: PLC0415
 
         sample_ids: list[str] = [str(s) for s in inputs.get("sample_ids", [])]
-        revision_ids: list[str] = [str(r) for r in inputs.get("annotation_revision_ids", [])]
+        revision_ids: list[str] = [
+            str(r) for r in inputs.get("annotation_revision_ids") or []
+            if r is not None and str(r) not in ("None", "")
+        ]
         if not sample_ids:
             raise ValueError("commit_dataset requires at least one sample_id")
 
@@ -113,9 +116,14 @@ class CommitDatasetStep(Step):
         ).all()
         source_of = {str(sid): str(src) for sid, src in src_rows}
 
-        # ── Assign splits via the registered strategy ───────────────────────
-        assign = split_strategies.get(strategy_key)
-        splits = assign(committed, source_of, train_ratio, val_ratio, seed)
+        # ── Assign splits — preset from import takes priority ───────────────
+        preset: dict[str, str] = inputs.get("splits") or {}
+        if preset:
+            # ponytail: fall back to "train" for any sample not in preset (shouldn't happen)
+            splits = {sid: preset.get(sid, "train") for sid in committed}
+        else:
+            assign = split_strategies.get(strategy_key)
+            splits = assign(committed, source_of, train_ratio, val_ratio, seed)
 
         # ── Resolve / create dataset ────────────────────────────────────────
         dataset_id = await self._get_or_create_dataset(
@@ -144,7 +152,8 @@ class CommitDatasetStep(Step):
                 )
             ).all()
             for p_sid, p_rev, p_split in parent_rows:
-                merged[str(p_sid)] = (str(p_rev), p_split)
+                if p_rev is not None:  # skip corrupt rows from pre-fix commits
+                    merged[str(p_sid)] = (str(p_rev), p_split)
 
         # The batch wins on overlap (and adds batch-only samples).
         # TODO(#141): removal semantics — a future "this commit deletes sample X"
@@ -331,4 +340,4 @@ class CommitDatasetStep(Step):
         ).first()
         if row is None:
             return None, None
-        return str(row[1]), str(row[0])
+        return (str(row[1]) if row[1] is not None else None), str(row[0])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
@@ -10,11 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cvops_api.core.auth import get_current_user
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
-from cvops_api.db.models.projects import Project
 from cvops_api.db.models.ontologies import Ontology, LabelClass
 from cvops_api.schemas.ontologies import (
     OntologyCreate,
     OntologyOut,
+    OntologyUpdate,
     LabelClassCreate,
     LabelClassUpdate,
     LabelClassOut,
@@ -23,55 +24,47 @@ from cvops_api.schemas.ontologies import (
 router = APIRouter()
 
 
-async def _check_project(
-    project_id: uuid.UUID,
+async def _get_ontology(
+    id: uuid.UUID,
     current_user: User,
     session: AsyncSession,
-) -> Project:
-    r = await session.execute(
-        select(Project).where(
-            Project.id == project_id,
-            Project.org_id == current_user.org_id,
-            Project.deleted_at == None,  # noqa: E711
-        )
-    )
-    proj = r.scalar_one_or_none()
-    if proj is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return proj
+) -> Ontology:
+    r = await session.execute(select(Ontology).where(Ontology.id == id))
+    ontology = r.scalar_one_or_none()
+    if ontology is None or ontology.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Ontology not found")
+    if ontology.org_id != current_user.org_id:
+        raise HTTPException(status_code=404, detail="Ontology not found")
+    return ontology
 
 
-@router.get("/projects/{project_id}/ontologies", response_model=list[OntologyOut])
+@router.get("/ontologies", response_model=list[OntologyOut])
 async def list_ontologies(
-    project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[OntologyOut]:
-    await _check_project(project_id, current_user, session)
     r = await session.execute(
         select(Ontology).where(
-            Ontology.project_id == project_id,
+            Ontology.org_id == current_user.org_id,
             Ontology.deleted_at == None,  # noqa: E711
         )
     )
     return [OntologyOut.model_validate(o) for o in r.scalars().all()]
 
 
-@router.post(
-    "/projects/{project_id}/ontologies",
-    response_model=OntologyOut,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/ontologies", response_model=OntologyOut, status_code=status.HTTP_201_CREATED)
 async def create_ontology(
-    project_id: uuid.UUID,
     body: OntologyCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> OntologyOut:
-    await _check_project(project_id, current_user, session)
-    ontology = Ontology(project_id=project_id, name=body.name)
+    ontology = Ontology(org_id=current_user.org_id, name=body.name)
     session.add(ontology)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Name already exists")
     return OntologyOut.model_validate(ontology)
 
 
@@ -81,12 +74,37 @@ async def get_ontology(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> OntologyOut:
-    r = await session.execute(select(Ontology).where(Ontology.id == id))
-    ontology = r.scalar_one_or_none()
-    if ontology is None:
-        raise HTTPException(status_code=404, detail="Ontology not found")
-    await _check_project(ontology.project_id, current_user, session)
+    ontology = await _get_ontology(id, current_user, session)
     return OntologyOut.model_validate(ontology)
+
+
+@router.patch("/ontologies/{id}", response_model=OntologyOut)
+async def update_ontology(
+    id: uuid.UUID,
+    body: OntologyUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> OntologyOut:
+    ontology = await _get_ontology(id, current_user, session)
+    ontology.name = body.name
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Name already exists")
+    return OntologyOut.model_validate(ontology)
+
+
+@router.delete("/ontologies/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ontology(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    ontology = await _get_ontology(id, current_user, session)
+    ontology.deleted_at = datetime.now(UTC)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/ontologies/{id}/classes", response_model=list[LabelClassOut])
@@ -95,15 +113,10 @@ async def list_label_classes(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[LabelClassOut]:
-    r = await session.execute(select(Ontology).where(Ontology.id == id))
-    ontology = r.scalar_one_or_none()
-    if ontology is None:
-        raise HTTPException(status_code=404, detail="Ontology not found")
-    await _check_project(ontology.project_id, current_user, session)
-
+    ontology = await _get_ontology(id, current_user, session)
     rows = await session.execute(
         select(LabelClass)
-        .where(LabelClass.ontology_id == id)
+        .where(LabelClass.ontology_id == ontology.id)
         .order_by(LabelClass.sort_order)
     )
     return [LabelClassOut.model_validate(lc) for lc in rows.scalars().all()]
@@ -120,12 +133,7 @@ async def create_label_class(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> LabelClassOut:
-    r = await session.execute(select(Ontology).where(Ontology.id == id))
-    ontology = r.scalar_one_or_none()
-    if ontology is None:
-        raise HTTPException(status_code=404, detail="Ontology not found")
-    await _check_project(ontology.project_id, current_user, session)
-
+    ontology = await _get_ontology(id, current_user, session)
     lc = LabelClass(
         ontology_id=ontology.id,
         class_key=body.class_key,
@@ -153,12 +161,7 @@ async def update_label_class(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> LabelClassOut:
-    r = await session.execute(select(Ontology).where(Ontology.id == id))
-    ontology = r.scalar_one_or_none()
-    if ontology is None:
-        raise HTTPException(status_code=404, detail="Ontology not found")
-    await _check_project(ontology.project_id, current_user, session)
-
+    ontology = await _get_ontology(id, current_user, session)
     r2 = await session.execute(select(LabelClass).where(LabelClass.id == class_id))
     lc = r2.scalar_one_or_none()
     if lc is None or lc.ontology_id != ontology.id:
@@ -185,12 +188,7 @@ async def delete_label_class(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    r = await session.execute(select(Ontology).where(Ontology.id == id))
-    ontology = r.scalar_one_or_none()
-    if ontology is None:
-        raise HTTPException(status_code=404, detail="Ontology not found")
-    await _check_project(ontology.project_id, current_user, session)
-
+    ontology = await _get_ontology(id, current_user, session)
     r2 = await session.execute(select(LabelClass).where(LabelClass.id == class_id))
     lc = r2.scalar_one_or_none()
     if lc is None or lc.ontology_id != ontology.id:

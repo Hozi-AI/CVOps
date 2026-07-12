@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { STEP_META, type FieldSpec, type ResolvedInput } from '../../lib/stepMeta'
 import { Field, Input, Select, Textarea } from '../ui'
+import { useOntologies } from '../../api/ontologies'
 
 function setOrDrop(
   config: Record<string, unknown>,
@@ -104,6 +105,7 @@ function FieldRow({
   const id = `cfg-${spec.key}`
   const raw = config[spec.key]
   const set = (v: unknown) => onConfigChange(setOrDrop(config, spec.key, v))
+  const { data: ontologies } = useOntologies()
 
   let control
   switch (spec.widget) {
@@ -162,6 +164,18 @@ function FieldRow({
       break
     case 'keyvalue':
       control = <KeyValueEditor value={raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}} onChange={set} />
+      break
+    case 'ontology-picker':
+      control = (
+        <Select id={id} value={typeof raw === 'string' ? raw : ''} onChange={(e) => set(e.target.value || undefined)}>
+          <option value="">Select an ontology…</option>
+          {(ontologies ?? []).map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name} (v{o.version})
+            </option>
+          ))}
+        </Select>
+      )
       break
     default:
       control = (

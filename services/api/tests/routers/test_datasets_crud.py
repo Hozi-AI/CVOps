@@ -161,7 +161,7 @@ async def test_list_commits(factory) -> None:
     user, project = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         commit = await make_commit(
             s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id, message="c1"
         )
@@ -189,7 +189,7 @@ async def test_list_commits_pagination(factory) -> None:
     created_ids: list[str] = []
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         for i in range(3):
             commit = await make_commit(
                 s,
@@ -233,7 +233,7 @@ async def test_get_commit(factory) -> None:
     user, project = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         commit = await make_commit(
             s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id, message="c1"
         )
@@ -264,7 +264,7 @@ async def test_get_commit_cross_org_404(factory) -> None:
     other, _p2 = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         commit = await make_commit(s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id)
         await s.commit()
         ds_id, commit_id = ds.id, commit.id
@@ -278,7 +278,7 @@ async def test_get_commit_samples(factory) -> None:
     user, project = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         commit = await make_commit(s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id)
         sample = await make_sample(s, project_id=project.id)
         s.add(
@@ -304,7 +304,7 @@ async def test_create_commit_creates_branch_ref(factory) -> None:
     user, project = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         sample = await make_sample(s, project_id=project.id)
         rev = AnnotationRevision(
             project_id=project.id,
@@ -502,7 +502,7 @@ async def test_diff_commits(factory) -> None:
     user, project = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         c_from = await make_commit(s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id)
         c_to = await make_commit(s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id)
         # shared sample in both, one only in from (removed), one only in to (added)
@@ -534,7 +534,7 @@ async def test_diff_from_commit_not_in_dataset_404(factory) -> None:
     user, project = await _seed(factory)
     async with factory() as s:
         ds = await make_dataset(s, project_id=project.id)
-        ont = await make_ontology(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
         c_to = await make_commit(s, project_id=project.id, dataset_id=ds.id, ontology_id=ont.id)
         await s.commit()
         ds_id, to_id = ds.id, c_to.id

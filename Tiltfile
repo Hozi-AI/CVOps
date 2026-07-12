@@ -141,6 +141,7 @@ def envreq(key):
 config.define_bool('cvat')
 config.define_bool('training')
 config.define_bool('heavy')
+config.define_bool('no-yolo-base')
 cfg = config.parse()
 
 def _truthy(v):
@@ -279,13 +280,11 @@ if ENABLE_CVAT:
     )
 
     # CVAT's compose bind-mounts config files (vector.toml, grafana_conf.yml, …)
-    # straight out of the `services/cvat` git submodule. If the submodule isn't
-    # checked out, those host paths don't exist and Docker silently creates them as
-    # root-owned *directories* — which then fail to mount onto the container's
-    # config *files*. Initialise the submodule before any CVAT container starts so
-    # the real files are always present. Idempotent: a no-op once checked out.
+    # from services/cvat/components/analytics/. These were vendored manually
+    # (see docs/09-gaps-and-considerations.md §F) because the git submodule
+    # cannot be fetched reliably. We just verify the files exist here.
     local_resource('cvat-submodule',
-        cmd='git submodule update --init services/cvat',
+        cmd='test -f services/cvat/components/analytics/vector/vector.toml && test -f services/cvat/components/analytics/grafana_conf.yml || { echo "CVAT config files missing — see docs/09-gaps-and-considerations.md section F"; exit 1; }',
         labels=['1-infra'],
     )
 
@@ -567,6 +566,7 @@ if ENABLE_CVAT:
         deps=['services/worker-cvat/yolo-base.Dockerfile'],
         labels=['3-cvat'],
         resource_deps=['cvat-network'],
+        auto_init=not (cfg.get('no-yolo-base') or _truthy(env.get('CVOPS_NO_YOLO_BASE', ''))),
     )
 
     worker_cvat_env = dict(api_env)
@@ -605,7 +605,7 @@ if ENABLE_CVAT:
         # bootstrap, so a slow or failing CVAT stack never blocks the worker. It
         # connects to CVAT lazily, per review/deploy doorbell, and surfaces any CVAT
         # error on that run instead.
-        resource_deps=['postgres', 'redis', 'garage-bootstrap', 'steps-install', 'worker-cvat-install', 'nuctl-install', 'docker-socket-perms', 'migrate-up', 'yolo-base-image'],
+        resource_deps=['postgres', 'redis', 'garage-bootstrap', 'steps-install', 'worker-cvat-install', 'nuctl-install', 'docker-socket-perms', 'migrate-up'],
         labels=['4-cvat-app'],
     )
 

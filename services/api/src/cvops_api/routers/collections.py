@@ -109,6 +109,7 @@ async def create_collection(
         entity_type="collection",
         entity_id=coll.id,
         action="collection.created",
+        org_id=current_user.org_id,
     )
     await session.commit()
     await session.refresh(coll)
@@ -153,6 +154,7 @@ async def update_collection(
         entity_type="collection",
         entity_id=coll.id,
         action="collection.updated",
+        org_id=current_user.org_id,
     )
     await session.commit()
     await session.refresh(coll)
@@ -175,6 +177,7 @@ async def delete_collection(
         entity_type="collection",
         entity_id=coll.id,
         action="collection.deleted",
+        org_id=current_user.org_id,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -218,6 +221,7 @@ async def add_collection_samples(
             entity_id=id,
             action="collection.samples_added",
             payload={"count": len(valid)},
+            org_id=current_user.org_id,
         )
         await session.commit()
 
@@ -251,6 +255,7 @@ async def remove_collection_samples(
         entity_id=id,
         action="collection.samples_removed",
         payload={"count": res.rowcount},
+        org_id=current_user.org_id,
     )
     await session.commit()
     return BulkResult(matched=len(body.sample_ids), affected=res.rowcount, skipped_ids=[])
