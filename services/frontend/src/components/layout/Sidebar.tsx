@@ -19,6 +19,7 @@ function ProjectNav({ projectId }: { projectId: string }) {
   const items = [
     { to: `/projects/${projectId}`,              label: 'Dashboard',    end: true  },
     { to: `/projects/${projectId}/data-sources`, label: 'Data Sources', end: false },
+    { to: `/projects/${projectId}/import`,       label: 'Import',       end: false },
     { to: `/projects/${projectId}/samples`,      label: 'Samples',      end: false },
     { to: `/projects/${projectId}/datasets`,     label: 'Datasets',     end: false },
     { to: `/projects/${projectId}/workflows`,    label: 'Workflows',    end: false },
