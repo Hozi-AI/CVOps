@@ -70,3 +70,12 @@ class TrainCommitRequest(BaseModel):
     branch: str | None = None
     hyperparams: dict[str, Any] | None = None
     training_container_id: uuid.UUID | None = None
+
+
+class ImportRequest(BaseModel):
+    blob_hash: str | None = None
+    folder_path: str | None = None
+    format: str = "auto"
+    ontology_id: uuid.UUID | None = None
+    dataset_name: str = "Imported Dataset"
+    review: bool = False
