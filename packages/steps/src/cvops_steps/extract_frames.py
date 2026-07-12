@@ -117,7 +117,7 @@ class ExtractFramesStep(Step):
         from sqlalchemy import text  # noqa: PLC0415
 
         source_id = inputs["source_id"]
-        interval_seconds = float(config["interval_seconds"])
+        interval_seconds = float(config.get("interval_seconds", 2.0))
         max_frames = config.get("max_frames")
 
         async def _set_source_status(status: str) -> None:

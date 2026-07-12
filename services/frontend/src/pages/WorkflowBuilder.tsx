@@ -12,6 +12,7 @@ import {
   useReactFlow,
   BackgroundVariant,
   MarkerType,
+  ConnectionMode,
 } from '@xyflow/react'
 import type { Connection, Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -213,7 +214,7 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
       setNodes((nds) => [
         ...nds,
         {
-          id: `${typeKey}-${Date.now()}`,
+          id: `${typeKey.replace(/\./g, '_')}-${Date.now()}`,
           type: 'step',
           position,
           data: { label: stepLabel(typeKey), type_key: typeKey, status: null, config: {} },
@@ -346,6 +347,7 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
         nodeTypes={nodeTypes}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        connectionMode={ConnectionMode.Loose}
         defaultEdgeOptions={EDGE_OPTIONS}
         proOptions={{ hideAttribution: true }}
         fitView

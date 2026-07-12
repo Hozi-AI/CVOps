@@ -12,6 +12,6 @@
       "description": "Cap on total frames extracted (optional)"
     }
   },
-  "required": ["interval_seconds"],
+  "required": [],
   "additionalProperties": false
 }
