@@ -13,7 +13,6 @@ import tempfile
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
-from pydantic import BaseModel
 
 from cvops_cvat_client import annotate, list_models
 from deployer import deploy
@@ -28,12 +27,6 @@ def _require_token(authorization: str | None = Header(None)) -> None:
     scheme, _, provided = authorization.partition(" ")
     if scheme.lower() != "bearer" or not hmac.compare_digest(provided, token):
         raise HTTPException(401, "Unauthorized")
-
-
-class AnnotateRequest(BaseModel):
-    task_name: str
-    function_id: str
-    threshold: float = 0.3
 
 
 @app.post("/deploy", dependencies=[Depends(_require_token)])
@@ -65,7 +58,9 @@ def get_models() -> list[dict]:
 
 @app.post("/annotate", dependencies=[Depends(_require_token)])
 async def annotate_task(
-    body: AnnotateRequest,
+    task_name: str = Form(...),
+    function_id: str = Form(...),
+    threshold: float = Form(0.3),
     files: list[UploadFile] = File(...),
 ) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
@@ -78,10 +73,10 @@ async def annotate_task(
 
         try:
             result = annotate(
-                task_name=body.task_name,
-                function_id=body.function_id,
+                task_name=task_name,
+                function_id=function_id,
                 image_paths=image_paths,
-                threshold=body.threshold,
+                threshold=threshold,
             )
         except Exception as e:
             raise HTTPException(500, str(e))

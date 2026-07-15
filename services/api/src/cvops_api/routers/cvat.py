@@ -3,8 +3,7 @@ from __future__ import annotations
 import uuid
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,24 +114,20 @@ async def cvat_delete_model(
 
 # ── Trigger auto-annotation ───────────────────────────────────────────────────
 
-class AnnotateRequest(BaseModel):
-    task_name: str
-    function_id: str
-    threshold: float = 0.3
-
-
 @router.post("/projects/{project_id}/cvat-annotate")
 async def cvat_annotate(
     project_id: uuid.UUID,
-    body: AnnotateRequest,
+    task_name: str = Form(...),
+    function_id: str = Form(...),
+    threshold: float = Form(0.3),
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Upload images and trigger auto-annotation in CVAT with the selected model."""
     form_data = {
-        "task_name": body.task_name,
-        "function_id": body.function_id,
-        "threshold": str(body.threshold),
+        "task_name": task_name,
+        "function_id": function_id,
+        "threshold": str(threshold),
     }
     upload_files = [
         ("files", (f.filename, await f.read(), f.content_type or "image/jpeg"))
