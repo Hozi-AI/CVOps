@@ -160,6 +160,7 @@ export function useDownloadCommit(datasetId: string | undefined, commitId: strin
   const [dispatching, setDispatching] = useState(false)
 
   // Check for a cached export on mount so the button can show "Download" immediately.
+  // 404 is expected when no export exists yet — suppress the global error toast.
   const cached = useQuery<{ url: string; blob_hash: string }>({
     queryKey: ['commit-export-url', datasetId, commitId],
     queryFn: async () => {
@@ -168,6 +169,7 @@ export function useDownloadCommit(datasetId: string | undefined, commitId: strin
     },
     enabled: !!datasetId && !!commitId,
     retry: false,
+    meta: { silent: true },
   })
 
   const poll = useQuery({
