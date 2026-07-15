@@ -5,6 +5,8 @@ import { toast } from '../store/toast'
 import { Breadcrumbs, Button, Card, EmptyState, ErrorState, Field, Input, Label, SkeletonList } from '../components/ui'
 import { formatValue } from '../lib/format'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export default function Models() {
   const { id: projectId } = useParams<{ id: string }>()
   const { data: models, isLoading, isError, refetch } = useModels(projectId)
@@ -18,9 +20,11 @@ export default function Models() {
   const [file, setFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const commitIdError = commitId && !UUID_RE.test(commitId) ? 'Must be a valid UUID' : ''
+
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
-    if (!file || !projectId) return
+    if (!file || !projectId || commitIdError) return
     const toastId = toast.info(`Uploading "${name || file.name}"…`, 'Computing hash and uploading', 0)
     try {
       await upload.mutateAsync({ file, name, description, baseModel, trainedOnCommitId: commitId })
@@ -31,7 +35,7 @@ export default function Models() {
       if (fileRef.current) fileRef.current.value = ''
     } catch {
       toast.dismiss(toastId)
-      toast.error('Upload failed')
+      // Global mutationCache.onError shows the specific error; no redundant toast here.
     }
   }
 
@@ -65,8 +69,9 @@ export default function Models() {
                 value={commitId}
                 onChange={(e) => setCommitId(e.target.value)}
                 placeholder="Paste commit UUID"
-                className="font-mono text-xs"
+                className={`font-mono text-xs${commitIdError ? ' border-error' : ''}`}
               />
+              {commitIdError && <p className="mt-1 text-xs text-error">{commitIdError}</p>}
             </Field>
             <div>
               <Label>Weights file (.pt)</Label>
@@ -80,7 +85,7 @@ export default function Models() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Button type="submit" loading={upload.isPending} disabled={!file}>
+              <Button type="submit" loading={upload.isPending} disabled={!file || !!commitIdError}>
                 {upload.isPending ? 'Uploading…' : 'Upload'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => setShowForm(false)} disabled={upload.isPending}>
