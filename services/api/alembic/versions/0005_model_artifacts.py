@@ -27,6 +27,12 @@ def upgrade() -> None:
         sa.Column("created_by", UUID(as_uuid=True), nullable=True),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
             "model_version_id",
             UUID(as_uuid=True),
             sa.ForeignKey("model_versions.id"),

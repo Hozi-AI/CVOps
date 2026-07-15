@@ -121,7 +121,12 @@ async def list_models(
     session: AsyncSession = Depends(get_session),
 ) -> list[ModelVersionOut]:
     await _get_project(project_id, current_user, session)
-    r = await session.execute(select(ModelVersion).where(ModelVersion.project_id == project_id))
+    r = await session.execute(
+        select(ModelVersion).where(
+            ModelVersion.project_id == project_id,
+            ModelVersion.deleted_at == None,  # noqa: E711
+        )
+    )
     return [ModelVersionOut.model_validate(mv) for mv in r.scalars().all()]
 
 
@@ -232,7 +237,10 @@ async def list_artifacts(
 ) -> list[ModelArtifactOut]:
     await _get_model_version(id, current_user, session)
     r = await session.execute(
-        select(ModelArtifact).where(ModelArtifact.model_version_id == id)
+        select(ModelArtifact).where(
+            ModelArtifact.model_version_id == id,
+            ModelArtifact.deleted_at == None,  # noqa: E711
+        )
     )
     artifacts = r.scalars().all()
     results = []
