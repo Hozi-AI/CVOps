@@ -10,6 +10,10 @@
     "confidence_threshold": {
       "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.35,
       "description": "Detections below this confidence are discarded"
+    },
+    "ontology_id": {
+      "type": "string", "format": "uuid",
+      "description": "UUID of the ontology whose class_keys label detections. Defaults to project default."
     }
   },
   "required": ["model_version_id"],
