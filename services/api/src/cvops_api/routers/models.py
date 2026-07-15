@@ -11,11 +11,11 @@ from cvops_api.config import settings
 from cvops_api.core.auth import get_current_user
 from cvops_api.core.storage import StorageBackend, get_storage, public_s3_endpoint
 from cvops_api.db.models.blobs import Blob
-from cvops_api.db.models.models import ModelVersion
+from cvops_api.db.models.models import ModelArtifact, ModelVersion
 from cvops_api.db.models.projects import Project
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
-from cvops_api.schemas.models import ModelVersionCreate, ModelVersionOut, ModelVersionPatch
+from cvops_api.schemas.models import ModelArtifactCreate, ModelArtifactOut, ModelVersionCreate, ModelVersionOut, ModelVersionPatch
 
 router = APIRouter()
 
@@ -164,3 +164,83 @@ async def patch_model_version(
     await session.commit()
     await session.refresh(mv)
     return ModelVersionOut.model_validate(mv)
+
+
+# ── Model Artifacts ───────────────────────────────────────────────────────────
+
+
+@router.get("/models/{id}/artifacts/upload-url")
+async def get_artifact_upload_url(
+    id: uuid.UUID,
+    blob_hash: str,
+    filename: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    await _get_model_version(id, current_user, session)
+    url = await get_storage().get_presigned_put(
+        blob_hash, endpoint=public_s3_endpoint(request.url.hostname)
+    )
+    return {"upload_url": url}
+
+
+@router.post("/models/{id}/artifacts", response_model=ModelArtifactOut, status_code=201)
+async def create_artifact(
+    id: uuid.UUID,
+    body: ModelArtifactCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ModelArtifactOut:
+    await _get_model_version(id, current_user, session)
+    await session.execute(
+        pg_insert(Blob)
+        .values(
+            hash=body.blob_hash,
+            storage_backend=settings.S3_BACKEND,
+            storage_key=StorageBackend._bucket_key(body.blob_hash),
+            size_bytes=body.size_bytes,
+            media_type=body.mime_type or "application/octet-stream",
+        )
+        .on_conflict_do_nothing(index_elements=["hash"])
+    )
+    artifact = ModelArtifact(
+        model_version_id=id,
+        blob_hash=body.blob_hash,
+        filename=body.filename,
+        mime_type=body.mime_type,
+        created_by=current_user.id,
+    )
+    session.add(artifact)
+    await session.commit()
+    await session.refresh(artifact)
+    url = await get_storage().get_presigned_get(
+        body.blob_hash, endpoint=public_s3_endpoint(request.url.hostname)
+    )
+    out = ModelArtifactOut.model_validate(artifact)
+    out.url = url
+    return out
+
+
+@router.get("/models/{id}/artifacts", response_model=list[ModelArtifactOut])
+async def list_artifacts(
+    id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[ModelArtifactOut]:
+    await _get_model_version(id, current_user, session)
+    r = await session.execute(
+        select(ModelArtifact).where(ModelArtifact.model_version_id == id)
+    )
+    artifacts = r.scalars().all()
+    results = []
+    for a in artifacts:
+        url = await get_storage().get_presigned_get(
+            a.blob_hash, endpoint=public_s3_endpoint(request.url.hostname)
+        )
+        out = ModelArtifactOut.model_validate(a)
+        out.url = url
+        results.append(out)
+    return results

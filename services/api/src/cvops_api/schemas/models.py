@@ -40,6 +40,13 @@ class ModelVersionPatch(BaseModel):
     mlflow_run_id: str | None = None
 
 
+class ModelArtifactCreate(BaseModel):
+    blob_hash: str
+    filename: str
+    size_bytes: int
+    mime_type: str | None = None
+
+
 class ModelArtifactOut(BaseModel):
     model_config = {"from_attributes": True}
     id: uuid.UUID

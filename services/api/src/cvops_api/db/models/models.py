@@ -77,3 +77,25 @@ class ModelVersion(Base, EntityBase):
             f"blob_hash={self.blob_hash!r} base_model={self.base_model!r} "
             f"training_container_id={self.training_container_id!r}>"
         )
+
+
+class ModelArtifact(Base, EntityBase):
+    """
+    A file artifact (training plot, CSV, weight snapshot) attached to a
+    model version. Stored as a content-addressed blob; filename is user-supplied.
+    """
+
+    __tablename__ = "model_artifacts"
+
+    model_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_versions.id"), nullable=False, index=True
+    )
+    blob_hash: Mapped[str] = mapped_column(ForeignKey("blobs.hash"), nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return (
+            f"<ModelArtifact id={self.id!r} model_version_id={self.model_version_id!r} "
+            f"filename={self.filename!r}>"
+        )
