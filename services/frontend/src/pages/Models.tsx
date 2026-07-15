@@ -1,43 +1,48 @@
 import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useModels, useUploadModel } from '../api/models'
+import { useDatasets, useCommits } from '../api/datasets'
 import { toast } from '../store/toast'
-import { Breadcrumbs, Button, Card, EmptyState, ErrorState, Field, Input, Label, SkeletonList } from '../components/ui'
+import { Breadcrumbs, Button, Card, EmptyState, ErrorState, Field, Input, Label, Select, SkeletonList } from '../components/ui'
 import { formatValue } from '../lib/format'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default function Models() {
   const { id: projectId } = useParams<{ id: string }>()
   const { data: models, isLoading, isError, refetch } = useModels(projectId)
+  const { data: datasets } = useDatasets(projectId)
   const upload = useUploadModel(projectId!)
 
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [baseModel, setBaseModel] = useState('')
+  const [datasetId, setDatasetId] = useState('')
   const [commitId, setCommitId] = useState('')
-  const [commitIdTouched, setCommitIdTouched] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const commitIdInvalid = !!commitId && !UUID_RE.test(commitId)
-  const commitIdError = commitIdTouched && commitIdInvalid ? 'Must be a valid UUID' : ''
+  const { data: commitsData } = useCommits(datasetId || undefined)
+  const commits = commitsData?.pages.flatMap((p) => p.items) ?? []
+
+  function resetForm() {
+    setName(''); setDescription(''); setBaseModel('')
+    setDatasetId(''); setCommitId(''); setFile(null)
+    if (fileRef.current) fileRef.current.value = ''
+  }
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
-    if (!file || !projectId || commitIdError) return
+    if (!file || !projectId) return
     const toastId = toast.info(`Uploading "${name || file.name}"…`, 'Computing hash and uploading', 0)
     try {
       await upload.mutateAsync({ file, name, description, baseModel, trainedOnCommitId: commitId })
       toast.dismiss(toastId)
       toast.success('Model version uploaded')
       setShowForm(false)
-      setName(''); setDescription(''); setBaseModel(''); setCommitId(''); setCommitIdTouched(false); setFile(null)
-      if (fileRef.current) fileRef.current.value = ''
+      resetForm()
     } catch {
       toast.dismiss(toastId)
-      // Global mutationCache.onError shows the specific error; no redundant toast here.
+      // Global mutationCache.onError surfaces the specific error.
     }
   }
 
@@ -66,16 +71,33 @@ export default function Models() {
             <Field label="Description">
               <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What changed, what it was trained on…" />
             </Field>
-            <Field label="Dataset commit ID (optional)">
-              <Input
-                value={commitId}
-                onChange={(e) => setCommitId(e.target.value)}
-                onBlur={() => setCommitIdTouched(true)}
-                placeholder="Paste commit UUID"
-                className={`font-mono text-xs${commitIdError ? ' border-error' : ''}`}
-              />
-              {commitIdError && <p className="mt-1 text-xs text-error">{commitIdError}</p>}
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Dataset (optional)">
+                <Select
+                  value={datasetId}
+                  onChange={(e) => { setDatasetId(e.target.value); setCommitId('') }}
+                >
+                  <option value="">— none —</option>
+                  {(datasets ?? []).map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Commit (optional)">
+                <Select
+                  value={commitId}
+                  onChange={(e) => setCommitId(e.target.value)}
+                  disabled={!datasetId}
+                >
+                  <option value="">— none —</option>
+                  {commits.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.message ?? c.id.slice(0, 8)} · {new Date(c.created_at).toLocaleDateString()}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
             <div>
               <Label>Weights file (.pt)</Label>
               <input
@@ -88,7 +110,7 @@ export default function Models() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Button type="submit" loading={upload.isPending} disabled={!file || commitIdInvalid}>
+              <Button type="submit" loading={upload.isPending} disabled={!file}>
                 {upload.isPending ? 'Uploading…' : 'Upload'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => setShowForm(false)} disabled={upload.isPending}>
