@@ -62,6 +62,8 @@ class ModelVersion(Base, EntityBase):
         ForeignKey("training_containers.id"), nullable=True
     )
     base_model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     hyperparams: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     code_version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

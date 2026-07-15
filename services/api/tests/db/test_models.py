@@ -192,3 +192,22 @@ async def test_model_version_optional_fields_null(session: AsyncSession):
     assert mv.env_hash is None
     assert mv.seed is None
     assert mv.mlflow_run_id is None
+
+
+async def test_model_version_name_description(session: AsyncSession):
+    """ModelVersion accepts and persists name/description."""
+    project = await make_project(session)
+    blob = await make_blob(session)
+    commit = await make_commit(session, project_id=project.id)
+
+    mv = ModelVersion(
+        project_id=project.id,
+        blob_hash=blob.hash,
+        trained_on_commit_id=commit.id,
+        name="yolov8-nano-v1",
+        description="Trained on dataset commit abc",
+    )
+    session.add(mv)
+    await session.flush()
+    assert mv.name == "yolov8-nano-v1"
+    assert mv.description == "Trained on dataset commit abc"
