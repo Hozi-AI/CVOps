@@ -247,6 +247,21 @@ if ENABLE_TRAINING:
         links=[link('http://localhost:5000', 'mlflow ui')],
     )
 
+# ── Global teardown hook ─────────────────────────────────────────────────────
+# Always declared (outside ENABLE_CVAT) so `tilt down` cleans up the
+# cvops-cvat compose project and any stray nuclio containers even when this
+# session was started without --cvat.
+local_resource('external-cleanup',
+    cmd='true',
+    teardown_cmd='''
+        docker compose -p cvops-cvat down 2>/dev/null || true
+        docker ps -aq --filter name=nuclio | xargs -r docker rm -f 2>/dev/null || true
+    ''',
+    labels=['1-infra'],
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+)
+
 # ── CVAT stack (from docker-compose.override.yml) ───────────────────────────
 # Everything CVAT-related lives behind ENABLE_CVAT: the external network, the
 # docker-socket widening (needed by nuctl/the CVAT worker), the submodule
