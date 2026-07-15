@@ -126,3 +126,53 @@ export function usePatchModel(id: string) {
     },
   })
 }
+
+export interface ModelArtifact {
+  id: string
+  model_version_id: string
+  blob_hash: string
+  filename: string
+  mime_type: string | null
+  created_at: string
+  url: string | null
+}
+
+export function useModelArtifacts(modelId: string | undefined) {
+  return useQuery<ModelArtifact[]>({
+    queryKey: ['model-artifacts', modelId],
+    queryFn: async () => {
+      const { data } = await client.get<ModelArtifact[]>(`/models/${modelId}/artifacts`)
+      return data
+    },
+    enabled: !!modelId,
+    staleTime: PRESIGNED_URL_STALE_MS,
+    gcTime: PRESIGNED_URL_GC_MS,
+  })
+}
+
+export function useUploadArtifact(modelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const blobHash = await sha256hex(file)
+
+      const { data: slot } = await client.get<{ upload_url: string }>(
+        `/models/${modelId}/artifacts/upload-url`,
+        { params: { blob_hash: blobHash, filename: file.name } },
+      )
+      await fetch(slot.upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      })
+      const { data } = await client.post<ModelArtifact>(`/models/${modelId}/artifacts`, {
+        blob_hash: blobHash,
+        filename: file.name,
+        mime_type: file.type || null,
+        size_bytes: file.size,
+      })
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['model-artifacts', modelId] }),
+  })
+}

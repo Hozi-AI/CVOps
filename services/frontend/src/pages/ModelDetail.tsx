@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useModel, usePatchModel, useWeightsUrl } from '../api/models'
+import { useModel, useModelArtifacts, usePatchModel, useUploadArtifact, useWeightsUrl } from '../api/models'
 import { usePinProject } from '../lib/useActiveProject'
 import { Breadcrumbs, Button, Card, ErrorState, Field, Input, SkeletonList } from '../components/ui'
 import { mlflowRunUrl } from '../lib/mlflow'
@@ -14,10 +14,25 @@ export default function ModelDetail() {
   const patch = usePatchModel(id!)
   usePinProject(model?.project_id)
 
+  const { data: artifacts } = useModelArtifacts(id)
+  const uploadArtifact = useUploadArtifact(id!)
+  const dropRef = useRef<HTMLDivElement>(null)
+
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
   const [editMlflow, setEditMlflow] = useState('')
+
+  async function handleFiles(files: FileList | null) {
+    if (!files) return
+    for (const file of Array.from(files)) {
+      try {
+        await uploadArtifact.mutateAsync(file)
+      } catch {
+        toast.error(`Failed to upload ${file.name}`)
+      }
+    }
+  }
 
   function startEdit() {
     setEditName(model?.name ?? '')
@@ -164,6 +179,67 @@ export default function ModelDetail() {
           </dl>
         </Card>
       )}
+
+      {/* Artifact gallery */}
+      <Card className="mt-4 p-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-text-secondary">Training Artifacts</h3>
+          <label className="cursor-pointer rounded-lg border border-border px-3 py-1 text-xs text-text-muted transition-colors hover:border-iris hover:text-iris-400">
+            + Add files
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => handleFiles(e.target.files)}
+            />
+          </label>
+        </div>
+
+        {/* Drop zone */}
+        <div
+          ref={dropRef}
+          onDragOver={(e) => { e.preventDefault(); dropRef.current?.classList.add('border-iris') }}
+          onDragLeave={() => dropRef.current?.classList.remove('border-iris')}
+          onDrop={(e) => { e.preventDefault(); dropRef.current?.classList.remove('border-iris'); handleFiles(e.dataTransfer.files) }}
+          className="mb-4 rounded-lg border-2 border-dashed border-border py-6 text-center text-xs text-text-muted transition-colors"
+        >
+          Drop training plots, CSVs, or any run files here
+        </div>
+
+        {uploadArtifact.isPending && (
+          <p className="mb-3 text-xs text-text-muted">Uploading…</p>
+        )}
+
+        {artifacts && artifacts.length === 0 && (
+          <p className="text-xs text-text-muted">No artifacts yet.</p>
+        )}
+
+        {artifacts && artifacts.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {artifacts.map((a) => (
+              <div key={a.id} className="overflow-hidden rounded-lg border border-border">
+                {a.mime_type?.startsWith('image/') && a.url ? (
+                  <a href={a.url} target="_blank" rel="noreferrer">
+                    <img src={a.url} alt={a.filename} className="h-36 w-full object-cover" />
+                  </a>
+                ) : (
+                  <div className="flex h-36 items-center justify-center bg-surface-3">
+                    <span className="text-3xl">📄</span>
+                  </div>
+                )}
+                <div className="px-2 py-1.5">
+                  <p className="truncate text-xs text-text-secondary" title={a.filename}>{a.filename}</p>
+                  {a.url && (
+                    <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-iris-400 hover:opacity-80">
+                      Download
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   )
 }
