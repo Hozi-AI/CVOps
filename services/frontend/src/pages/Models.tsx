@@ -17,10 +17,12 @@ export default function Models() {
   const [description, setDescription] = useState('')
   const [baseModel, setBaseModel] = useState('')
   const [commitId, setCommitId] = useState('')
+  const [commitIdTouched, setCommitIdTouched] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const commitIdError = commitId && !UUID_RE.test(commitId) ? 'Must be a valid UUID' : ''
+  const commitIdInvalid = !!commitId && !UUID_RE.test(commitId)
+  const commitIdError = commitIdTouched && commitIdInvalid ? 'Must be a valid UUID' : ''
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
@@ -31,7 +33,7 @@ export default function Models() {
       toast.dismiss(toastId)
       toast.success('Model version uploaded')
       setShowForm(false)
-      setName(''); setDescription(''); setBaseModel(''); setCommitId(''); setFile(null)
+      setName(''); setDescription(''); setBaseModel(''); setCommitId(''); setCommitIdTouched(false); setFile(null)
       if (fileRef.current) fileRef.current.value = ''
     } catch {
       toast.dismiss(toastId)
@@ -68,6 +70,7 @@ export default function Models() {
               <Input
                 value={commitId}
                 onChange={(e) => setCommitId(e.target.value)}
+                onBlur={() => setCommitIdTouched(true)}
                 placeholder="Paste commit UUID"
                 className={`font-mono text-xs${commitIdError ? ' border-error' : ''}`}
               />
@@ -85,7 +88,7 @@ export default function Models() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Button type="submit" loading={upload.isPending} disabled={!file || !!commitIdError}>
+              <Button type="submit" loading={upload.isPending} disabled={!file || commitIdInvalid}>
                 {upload.isPending ? 'Uploading…' : 'Upload'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => setShowForm(false)} disabled={upload.isPending}>
