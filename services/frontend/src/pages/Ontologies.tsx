@@ -33,6 +33,7 @@ const LABEL_COLORS = [
   '#808000','#ffd8b1','#000075','#a9a9a9','#ffffff',
 ]
 
+
 function LabelClassRow({ lc, ontologyId }: { lc: LabelClass; ontologyId: string }) {
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(lc.display_name)
