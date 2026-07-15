@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '../lib/client'
 import { PRESIGNED_URL_GC_MS, PRESIGNED_URL_STALE_MS } from '../lib/presign'
+import { sha256Hex } from '../lib/hash'
 
 export interface ModelVersion {
   id: string
@@ -63,14 +64,6 @@ export function useWeightsUrl(id: string | undefined) {
   })
 }
 
-async function sha256hex(file: File): Promise<string> {
-  const buf = await file.arrayBuffer()
-  const digest = await crypto.subtle.digest('SHA-256', buf)
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
-
 export function useUploadModel(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -82,7 +75,7 @@ export function useUploadModel(projectId: string) {
       trainedOnCommitId?: string
       mlflowRunId?: string
     }) => {
-      const blobHash = await sha256hex(params.file)
+      const blobHash = await sha256Hex(params.file)
 
       // Get presigned PUT URL
       const { data: slot } = await client.get<{ upload_url: string }>(
@@ -154,7 +147,7 @@ export function useUploadArtifact(modelId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (file: File) => {
-      const blobHash = await sha256hex(file)
+      const blobHash = await sha256Hex(file)
 
       const { data: slot } = await client.get<{ upload_url: string }>(
         `/models/${modelId}/artifacts/upload-url`,
