@@ -28,6 +28,7 @@ runs on worker-cvat, which has the client installed.
 from __future__ import annotations
 
 import logging
+import uuid
 
 from cvops_api.engine.step import GateException, Step, StepContext
 
@@ -44,14 +45,20 @@ class HumanReviewStep(Step):
             "labeling_backend": {"type": "string", "default": "cvat"},
             "assignees": {"type": "array", "items": {"type": "string"}},
             "task_name_prefix": {"type": "string", "default": "review-"},
+            "ontology_id": {"type": "string", "description": "UUID of the ontology to use for CVAT labels and new revisions. Defaults to the project's default ontology."},
         },
     }
+
+    def idempotency_key(self, config: dict, inputs: dict) -> str:
+        # ponytail: human labeling is not deterministic — same inputs produce a new
+        # CVAT task and new annotation_revision_ids each time. Reusing a prior
+        # output would pass stale revision IDs to commit_dataset.
+        return uuid.uuid4().hex
 
     async def run(self, ctx: StepContext, config: dict, inputs: dict) -> dict:
         import json  # noqa: PLC0415
         import os  # noqa: PLC0415
         import tempfile  # noqa: PLC0415
-        import uuid  # noqa: PLC0415
         from pathlib import Path  # noqa: PLC0415
 
         from sqlalchemy import text  # noqa: PLC0415
@@ -131,23 +138,39 @@ class HumanReviewStep(Step):
         # pull maps them straight back. Required: without an ontology there is
         # nowhere to store reviewed labels (annotation_revisions.ontology_id is
         # NOT NULL), so fail loudly rather than create a class-less task.
-        ont_id = (
-            await session.execute(
-                text(
-                    "SELECT o.id FROM ontologies o "
-                    "JOIN projects p ON p.org_id = o.org_id "
-                    "WHERE p.id = CAST(:pid AS uuid) AND o.deleted_at IS NULL "
-                    "ORDER BY (p.default_ontology_id = o.id) DESC NULLS LAST, o.version DESC "
-                    "LIMIT 1"
-                ),
-                {"pid": ctx.project_id},
-            )
-        ).scalar()
-        if ont_id is None:
-            raise ValueError(
-                "human_review requires the project to have an ontology — its label "
-                "classes define what reviewers can annotate in CVAT"
-            )
+        ont_id_cfg = config.get("ontology_id")
+        if ont_id_cfg:
+            ont_row = (
+                await session.execute(
+                    text(
+                        "SELECT id, version FROM ontologies "
+                        "WHERE id = CAST(:oid AS uuid) AND deleted_at IS NULL"
+                    ),
+                    {"oid": ont_id_cfg},
+                )
+            ).first()
+            if ont_row is None:
+                raise ValueError(f"ontology {ont_id_cfg} not found or deleted")
+            ont_id, ont_version = str(ont_row[0]), ont_row[1]
+        else:
+            ont_row = (
+                await session.execute(
+                    text(
+                        "SELECT o.id, o.version FROM ontologies o "
+                        "JOIN projects p ON p.org_id = o.org_id "
+                        "WHERE p.id = CAST(:pid AS uuid) AND o.deleted_at IS NULL "
+                        "ORDER BY (p.default_ontology_id = o.id) DESC NULLS LAST, o.version DESC "
+                        "LIMIT 1"
+                    ),
+                    {"pid": ctx.project_id},
+                )
+            ).first()
+            if ont_row is None:
+                raise ValueError(
+                    "human_review requires the project to have an ontology — its label "
+                    "classes define what reviewers can annotate in CVAT"
+                )
+            ont_id, ont_version = str(ont_row[0]), ont_row[1]
         label_names = [
             r[0]
             for r in (
@@ -155,7 +178,7 @@ class HumanReviewStep(Step):
                     text(
                         "SELECT class_key FROM label_classes WHERE ontology_id = CAST(:oid AS uuid)"
                     ),
-                    {"oid": str(ont_id)},
+                    {"oid": ont_id},
                 )
             ).all()
         ]
@@ -255,5 +278,9 @@ class HumanReviewStep(Step):
                 # Ordered to match CVAT frame order (upload order), so the pull
                 # flow maps frame index → sample without a schema change.
                 "sample_ids": sample_ids,
+                # Carry the resolved ontology so sync.py uses the same one for
+                # new revisions (not always the project default).
+                "ontology_id": ont_id,
+                "ontology_version": ont_version,
             }
         )

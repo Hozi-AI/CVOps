@@ -91,29 +91,35 @@ async def handle_cvat_sync(fields: dict[str, str]) -> None:
         dims = {str(sid): (w, h) for sid, w, h in dim_rows}
         frame_dims = [dims[s] for s in sample_ids]
 
-        # Fallback ontology for samples with no prior revision (e.g. reviewing
-        # unlabelled samples — nothing was auto-labelled first). annotation_revisions
-        # requires an ontology, so attach the project's default (else its latest).
-        fallback_ont = (
-            await session.execute(
-                text(
-                    "SELECT o.id, o.version FROM ontologies o "
-                    "JOIN projects p ON p.org_id = o.org_id "
-                    "WHERE p.id = CAST(:pid AS uuid) AND o.deleted_at IS NULL "
-                    "ORDER BY (p.default_ontology_id = o.id) DESC NULLS LAST, o.version DESC "
-                    "LIMIT 1"
-                ),
-                {"pid": project_id},
-            )
-        ).first()
+        # Prefer the ontology the push step resolved (respects config.ontology_id).
+        # Fall back to project default only for jobs pushed before this field existed.
+        gd_ont_id = gate_data.get("ontology_id")
+        gd_ont_ver = gate_data.get("ontology_version")
+        if gd_ont_id and gd_ont_ver is not None:
+            fallback_ont = (gd_ont_id, gd_ont_ver)
+        else:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT o.id, o.version FROM ontologies o "
+                        "JOIN projects p ON p.org_id = o.org_id "
+                        "WHERE p.id = CAST(:pid AS uuid) AND o.deleted_at IS NULL "
+                        "ORDER BY (p.default_ontology_id = o.id) DESC NULLS LAST, o.version DESC "
+                        "LIMIT 1"
+                    ),
+                    {"pid": project_id},
+                )
+            ).first()
+            fallback_ont = (str(row[0]), row[1]) if row else None
 
         by_frame = pull_review_task(cvat_task_id, frame_dims)  # {frame: [canonical ann]}
 
         out_rev_ids: list[str] = []
-        for frame, anns in by_frame.items():
-            if frame >= len(sample_ids):
-                continue
-            sid = sample_ids[frame]
+        # Iterate ALL samples — frames left empty by the reviewer are valid
+        # (no objects) and must still produce a revision so commit_dataset
+        # includes them. by_frame only contains frames that had boxes.
+        for frame, sid in enumerate(sample_ids):
+            anns = by_frame.get(frame, [])
             prev = (
                 await session.execute(
                     text(
