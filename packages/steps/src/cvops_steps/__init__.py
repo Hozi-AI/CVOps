@@ -34,7 +34,9 @@ def register_all() -> None:
 
     from cvops_steps.labeling_backends import register_backend  # noqa: PLC0415
     from cvops_steps.labeling_backends.cvat import CvatLabelingBackend  # noqa: PLC0415
+    from cvops_steps.labeling_backends.label_studio import LabelStudioBackend  # noqa: PLC0415
     register_backend(CvatLabelingBackend())
+    register_backend(LabelStudioBackend())
 
     for type_key, filename in _ANNOTATION_TYPES.items():
         with open(_ANN_SCHEMA_DIR / filename) as f:

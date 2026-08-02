@@ -66,6 +66,14 @@ async def test_project_default_modality_is_image(client):
     assert r.json()["modality"] == "image"
 
 
+def test_label_studio_backend_registered():
+    import cvops_steps
+    cvops_steps.register_all()
+    from cvops_steps.labeling_backends import get_backend
+    backend = get_backend("label_studio")
+    assert backend.name == "label_studio"
+
+
 def test_annotation_type_text_span_registered():
     import cvops_steps  # noqa: F401 — triggers register_all via import
     cvops_steps.register_all()
