@@ -26,15 +26,15 @@ class AutoLabelStep(Step):
 
         from cvops_steps.model_runners import get_runner  # noqa: PLC0415
 
-        runner_name = config.get("model_runner", "yolo")
-        runner = get_runner(runner_name)
-
         model_version_id = config["model_version_id"]
         threshold = float(config.get("confidence_threshold", 0.35))
         sample_ids = [str(s) for s in inputs.get("sample_ids", [])]
 
         if not sample_ids:
             return {"annotation_revision_ids": []}
+
+        runner_name = config.get("model_runner", "yolo")
+        runner = get_runner(runner_name)
 
         # Resolve model weights
         mv_row = (
@@ -45,7 +45,7 @@ class AutoLabelStep(Step):
         ).first()
         if mv_row is None:
             raise ValueError(f"model_version {model_version_id} not found")
-        model_bytes = await ctx.storage.get_bytes(mv_row.blob_hash)
+        model_bytes = await ctx.storage.get_bytes(mv_row[0])
 
         # Fetch samples (including modality)
         sample_rows = (
@@ -90,11 +90,11 @@ class AutoLabelStep(Step):
         ont_id, ont_version = str(ont_row[0]), ont_row[1]
 
         revision_ids: list[str] = []
-        for row in sample_rows:
+        for sid, blob_hash, modality in sample_rows:
             annotations = await runner.predict(
-                sample_id=str(row.id),
-                blob_hash=row.blob_hash,
-                modality=row.modality,
+                sample_id=str(sid),
+                blob_hash=blob_hash,
+                modality=modality,
                 model_bytes=model_bytes,
                 config={**config, "confidence_threshold": threshold},
                 storage=ctx.storage,
@@ -108,13 +108,13 @@ class AutoLabelStep(Step):
                         "SELECT COALESCE(MAX(revision_no), 0) + 1 "
                         "FROM annotation_revisions WHERE sample_id = CAST(:sid AS uuid)"
                     ),
-                    {"sid": str(row.id)},
+                    {"sid": str(sid)},
                 )
             ).scalar()
 
             annotation_type = (
                 "annotation.cv.detection"
-                if row.modality == "image"
+                if modality == "image"
                 else "annotation.text.classification"
             )
             rev_id = str(uuid.uuid4())
@@ -128,7 +128,7 @@ class AutoLabelStep(Step):
                 ),
                 {
                     "id": rev_id,
-                    "sid": str(row.id),
+                    "sid": str(sid),
                     "rev_no": rev_no,
                     "oid": ont_id,
                     "over": ont_version,
