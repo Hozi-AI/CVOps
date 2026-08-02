@@ -252,8 +252,7 @@ if ENABLE_TRAINING:
 # cvops-cvat compose project and any stray nuclio containers even when this
 # session was started without --cvat.
 local_resource('external-cleanup',
-    cmd='true',
-    teardown_cmd='''
+    cmd='''
         docker compose -p cvops-cvat down 2>/dev/null || true
         docker ps -aq --filter name=nuclio | xargs -r docker rm -f 2>/dev/null || true
     ''',
