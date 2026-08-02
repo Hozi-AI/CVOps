@@ -8,6 +8,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
 from cvops_api.core.auth import get_current_user
+from cvops_api.core.registry import registry
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import Org, User
 from cvops_api.routers import projects as projects_router
@@ -63,6 +64,30 @@ async def test_project_default_modality_is_image(client):
     r = await c.post("/projects/", json={"name": "img-proj"})
     assert r.status_code == 201
     assert r.json()["modality"] == "image"
+
+
+def test_annotation_type_text_span_registered():
+    import cvops_steps  # noqa: F401 — triggers register_all via import
+    cvops_steps.register_all()
+    reg = registry.resolve("annotation.text.span")
+    assert reg.category == "annotation_type"
+    schema = reg.json_schema
+    assert "items" in schema
+    item_props = schema["items"]["properties"]
+    assert "char_start" in item_props
+    assert "char_end" in item_props
+    assert "class_key" in item_props
+
+
+def test_annotation_type_sensor_region_registered():
+    import cvops_steps  # noqa: F401
+    cvops_steps.register_all()
+    reg = registry.resolve("annotation.sensor.region")
+    assert reg.category == "annotation_type"
+    props = reg.json_schema["items"]["properties"]
+    assert "time_start_ms" in props
+    assert "time_end_ms" in props
+    assert "class_key" in props
 
 
 @pytest.mark.asyncio
