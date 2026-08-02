@@ -9,6 +9,10 @@ from cvops_steps.commit_dataset import CommitDatasetStep
 from cvops_steps.export_yolo import ExportYoloStep
 from cvops_steps.train import TrainStep
 from cvops_steps.import_dataset import ImportDatasetStep
+from cvops_steps.chunk_text import ChunkTextStep
+from cvops_steps.parse_sensor import ParseSensorStep
+from cvops_steps.export_jsonl import ExportJsonlStep
+from cvops_steps.export_csv import ExportCsvStep
 
 _ANNOTATION_TYPES = {
     "annotation.text.span":           "text_span.json",
@@ -29,6 +33,10 @@ def register_all() -> None:
         ExportYoloStep(),
         TrainStep(),
         ImportDatasetStep(),
+        ChunkTextStep(),
+        ParseSensorStep(),
+        ExportJsonlStep(),
+        ExportCsvStep(),
     ]:
         registry.register(step)
 

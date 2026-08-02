@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Export JSONL Config",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "enum": ["raw", "openai", "hf"],
+      "default": "raw",
+      "description": "raw: {id, text, split, labels}; openai: {messages:[...]}; hf: {text, label}"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Chunk Text Config",
+  "type": "object",
+  "properties": {
+    "chunk_size": {
+      "type": "integer", "minimum": 10, "default": 512,
+      "description": "Target chunk size in characters"
+    },
+    "overlap": {
+      "type": "integer", "minimum": 0, "default": 64,
+      "description": "Character overlap between consecutive chunks"
+    },
+    "split_by": {
+      "type": "string",
+      "enum": ["chars", "sentences", "lines"],
+      "default": "sentences",
+      "description": "How to split: by raw char count, sentence boundaries, or newlines"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

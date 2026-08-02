@@ -117,6 +117,11 @@ def test_register_all_registers_all_steps(monkeypatch) -> None:
         ExportYoloStep.type_key,
         TrainStep.type_key,
         ImportDatasetStep.type_key,
+        # new multi-modal steps
+        "step.chunk_text",
+        "step.parse_sensor",
+        "step.export_jsonl",
+        "step.export_csv",
         # annotation types registered at startup
         "annotation.text.span",
         "annotation.text.classification",
