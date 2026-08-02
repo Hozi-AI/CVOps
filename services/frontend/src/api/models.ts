@@ -1,11 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '../lib/client'
 import { PRESIGNED_URL_GC_MS, PRESIGNED_URL_STALE_MS } from '../lib/presign'
+import { sha256Hex } from '../lib/hash'
 
 export interface ModelVersion {
   id: string
   project_id: string
   blob_hash: string
+  name: string | null
+  description: string | null
   trained_on_commit_id: string | null
   base_model: string | null
   hyperparams: Record<string, unknown> | null
@@ -13,6 +16,17 @@ export interface ModelVersion {
   code_version: string | null
   mlflow_run_id: string | null
   created_at: string
+}
+
+export interface ModelVersionCreate {
+  blob_hash: string
+  size_bytes: number
+  media_type?: string
+  name?: string
+  description?: string
+  base_model?: string
+  trained_on_commit_id?: string
+  mlflow_run_id?: string
 }
 
 export function useModels(projectId: string | undefined) {
@@ -47,5 +61,122 @@ export function useWeightsUrl(id: string | undefined) {
     enabled: !!id,
     staleTime: PRESIGNED_URL_STALE_MS,
     gcTime: PRESIGNED_URL_GC_MS,
+  })
+}
+
+export function useUploadModel(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: {
+      file: File
+      name?: string
+      description?: string
+      baseModel?: string
+      trainedOnCommitId?: string
+      mlflowRunId?: string
+    }) => {
+      const blobHash = await sha256Hex(params.file)
+
+      // Get presigned PUT URL
+      const { data: slot } = await client.get<{ upload_url: string }>(
+        `/projects/${projectId}/models/upload-url`,
+        { params: { blob_hash: blobHash } },
+      )
+
+      // Upload directly to MinIO
+      await fetch(slot.upload_url, {
+        method: 'PUT',
+        body: params.file,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+
+      // Register model version
+      const { data } = await client.post<ModelVersion>(`/projects/${projectId}/models`, {
+        blob_hash: blobHash,
+        size_bytes: params.file.size,
+        name: params.name,
+        description: params.description,
+        base_model: params.baseModel,
+        trained_on_commit_id: params.trainedOnCommitId || undefined,
+        mlflow_run_id: params.mlflowRunId || undefined,
+      } satisfies ModelVersionCreate)
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['models', projectId] }),
+  })
+}
+
+export function usePatchModel(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (patch: { name?: string; description?: string; mlflow_run_id?: string }) => {
+      const { data } = await client.patch<ModelVersion>(`/models/${id}`, patch)
+      return data
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['model', id] })
+      qc.invalidateQueries({ queryKey: ['models', data.project_id] })
+    },
+  })
+}
+
+export interface ModelArtifact {
+  id: string
+  model_version_id: string
+  blob_hash: string
+  filename: string
+  mime_type: string | null
+  created_at: string
+  url: string | null
+}
+
+export function useModelArtifacts(modelId: string | undefined) {
+  return useQuery<ModelArtifact[]>({
+    queryKey: ['model-artifacts', modelId],
+    queryFn: async () => {
+      const { data } = await client.get<ModelArtifact[]>(`/models/${modelId}/artifacts`)
+      return data
+    },
+    enabled: !!modelId,
+    staleTime: PRESIGNED_URL_STALE_MS,
+    gcTime: PRESIGNED_URL_GC_MS,
+  })
+}
+
+export function useDeployModelToCvat() {
+  return useMutation({
+    mutationFn: async ({ modelId, modelName }: { modelId: string; modelName: string }) => {
+      const { data } = await client.post(
+        `/models/${modelId}/cvat-deploy?model_name=${encodeURIComponent(modelName)}`,
+      )
+      return data
+    },
+  })
+}
+
+export function useUploadArtifact(modelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const blobHash = await sha256Hex(file)
+
+      const { data: slot } = await client.get<{ upload_url: string }>(
+        `/models/${modelId}/artifacts/upload-url`,
+        { params: { blob_hash: blobHash, filename: file.name } },
+      )
+      await fetch(slot.upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      })
+      const { data } = await client.post<ModelArtifact>(`/models/${modelId}/artifacts`, {
+        blob_hash: blobHash,
+        filename: file.name,
+        mime_type: file.type || null,
+        size_bytes: file.size,
+      })
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['model-artifacts', modelId] }),
   })
 }

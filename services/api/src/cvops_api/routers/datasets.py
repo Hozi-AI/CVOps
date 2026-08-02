@@ -4,7 +4,7 @@ import base64
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import select, tuple_, update
 from sqlalchemy.engine import CursorResult
@@ -91,7 +91,9 @@ async def list_datasets(
     session: AsyncSession = Depends(get_session),
 ) -> list[DatasetOut]:
     await _check_project(project_id, current_user, session)
-    r = await session.execute(select(Dataset).where(Dataset.project_id == project_id))
+    r = await session.execute(
+        select(Dataset).where(Dataset.project_id == project_id, Dataset.deleted_at.is_(None))
+    )
     return [DatasetOut.model_validate(d) for d in r.scalars().all()]
 
 
@@ -125,6 +127,22 @@ async def get_dataset(
         raise HTTPException(status_code=404, detail="Dataset not found")
     await _check_project(dataset.project_id, current_user, session)
     return DatasetOut.model_validate(dataset)
+
+
+
+@router.delete("/datasets/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dataset(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    r = await session.execute(select(Dataset).where(Dataset.id == id, Dataset.deleted_at.is_(None)))
+    dataset = r.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    await _check_project(dataset.project_id, current_user, session)
+    dataset.deleted_at = datetime.now(UTC)
+    await session.commit()
 
 
 # ── Review in CVAT ────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ from .versioning import Dataset, Commit, CommitSample, Ref, ProjectDatasetLink
 from .collections import Collection, CollectionSample
 from .tags import Tag, SampleTag
 from .workflows import Workflow
-from .models import TrainingContainer, ModelVersion
+from .models import TrainingContainer, ModelVersion, ModelArtifact
 from .labeling import LabelingJob
 
 __all__ = [
@@ -38,5 +38,6 @@ __all__ = [
     "Workflow",
     "TrainingContainer",
     "ModelVersion",
+    "ModelArtifact",
     "LabelingJob",
 ]

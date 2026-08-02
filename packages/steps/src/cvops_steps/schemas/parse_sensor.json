@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parse Sensor Config",
+  "type": "object",
+  "properties": {
+    "window_ms": {
+      "type": "integer", "minimum": 1, "default": 1000,
+      "description": "Time window length in milliseconds"
+    },
+    "overlap_ms": {
+      "type": "integer", "minimum": 0, "default": 0,
+      "description": "Overlap between consecutive windows in milliseconds"
+    },
+    "timestamp_col": {
+      "type": "string", "default": "timestamp_ms",
+      "description": "Name of the timestamp column in the source data"
+    },
+    "format": {
+      "type": "string", "enum": ["csv", "json", "auto"],
+      "default": "auto",
+      "description": "Source file format; auto detects from content"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

@@ -72,7 +72,7 @@ export const STEP_META: Record<string, StepMeta> = {
     color: '#FBBF24',
     inputs: ['sample_ids', 'annotation_revision_ids'],
     outputs: ['annotation_revision_ids'],
-    runParamInputs: ['sample_ids'],
+    runParamInputs: ['sample_ids', 'annotation_revision_ids'],
     fields: [
       { key: 'labeling_backend', label: 'Labeling backend', widget: 'select', options: [{ value: 'cvat', label: 'CVAT' }] },
       { key: 'assignees', label: 'Assignees', help: 'Usernames to assign the review task to.', widget: 'tags', placeholder: 'add username…' },

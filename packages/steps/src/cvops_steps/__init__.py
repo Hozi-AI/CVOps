@@ -1,4 +1,7 @@
-﻿from cvops_api.core.registry import registry
+﻿import json
+from pathlib import Path
+
+from cvops_api.core.registry import registry
 from cvops_steps.extract_frames import ExtractFramesStep
 from cvops_steps.auto_label import AutoLabelStep
 from cvops_steps.human_review import HumanReviewStep
@@ -6,6 +9,19 @@ from cvops_steps.commit_dataset import CommitDatasetStep
 from cvops_steps.export_yolo import ExportYoloStep
 from cvops_steps.train import TrainStep
 from cvops_steps.import_dataset import ImportDatasetStep
+from cvops_steps.chunk_text import ChunkTextStep
+from cvops_steps.parse_sensor import ParseSensorStep
+from cvops_steps.export_jsonl import ExportJsonlStep
+from cvops_steps.export_csv import ExportCsvStep
+
+_ANNOTATION_TYPES = {
+    "annotation.text.span":           "text_span.json",
+    "annotation.text.classification": "text_classification.json",
+    "annotation.sensor.region":       "sensor_region.json",
+    "annotation.sensor.point":        "sensor_point.json",
+}
+_ANN_SCHEMA_DIR = Path(__file__).parent / "schemas" / "annotation_types"
+
 
 def register_all() -> None:
     """Called at API startup to populate the in-memory registry."""
@@ -17,5 +33,26 @@ def register_all() -> None:
         ExportYoloStep(),
         TrainStep(),
         ImportDatasetStep(),
+        ChunkTextStep(),
+        ParseSensorStep(),
+        ExportJsonlStep(),
+        ExportCsvStep(),
     ]:
         registry.register(step)
+
+    from cvops_steps.labeling_backends import register_backend  # noqa: PLC0415
+    from cvops_steps.labeling_backends.cvat import CvatLabelingBackend  # noqa: PLC0415
+    from cvops_steps.labeling_backends.label_studio import LabelStudioBackend  # noqa: PLC0415
+    register_backend(CvatLabelingBackend())
+    register_backend(LabelStudioBackend())
+
+    from cvops_steps.model_runners import register_runner  # noqa: PLC0415
+    from cvops_steps.model_runners.yolo import YoloModelRunner  # noqa: PLC0415
+    from cvops_steps.model_runners.llm import LlmModelRunner  # noqa: PLC0415
+    register_runner(YoloModelRunner())
+    register_runner(LlmModelRunner())
+
+    for type_key, filename in _ANNOTATION_TYPES.items():
+        with open(_ANN_SCHEMA_DIR / filename) as f:
+            schema = json.load(f)
+        registry.register_type(type_key, "annotation_type", schema)

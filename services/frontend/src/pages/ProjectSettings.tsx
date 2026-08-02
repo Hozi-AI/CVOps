@@ -18,6 +18,7 @@ export default function ProjectSettings() {
 
   const [name, setName] = useState('')
   const [taskType, setTaskType] = useState('')
+  const [modality, setModality] = useState('')
   const [saved, setSaved] = useState(false)
   const [ingestSaved, setIngestSaved] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -26,11 +27,12 @@ export default function ProjectSettings() {
   if (project && name === '' && taskType === '') {
     setName(project.name)
     setTaskType(project.task_type)
+    setModality(project.modality ?? 'image')
   }
 
   async function handleSave(e: FormEvent) {
     e.preventDefault()
-    await updateProject.mutateAsync({ name, task_type: taskType })
+    await updateProject.mutateAsync({ name, task_type: taskType, modality })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -90,6 +92,18 @@ export default function ProjectSettings() {
             <option value="detection">Detection</option>
             <option value="segmentation">Segmentation</option>
             <option value="classification">Classification</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-text-primary mb-1">Modality</label>
+          <select
+            value={modality}
+            onChange={e => setModality(e.target.value)}
+            className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus"
+          >
+            <option value="image">Image / Video</option>
+            <option value="text">Text / NLP</option>
+            <option value="sensor">Sensor / Time-Series</option>
           </select>
         </div>
         <button

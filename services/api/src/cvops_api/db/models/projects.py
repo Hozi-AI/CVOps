@@ -26,6 +26,13 @@ class Project(Base, EntityBase):
         server_default="detection",
     )
 
+    modality: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="image",
+        server_default="image",
+    )
+
     default_ontology_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey(
             "ontologies.id",

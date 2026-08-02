@@ -7,6 +7,8 @@ import { useAnnotations } from '../../api/annotations'
 import { cn } from '../../lib/cn'
 import { LoadingState } from '../ui'
 import { BoxOverlay } from './BoxOverlay'
+import { SampleViewerText } from '../SampleViewerText'
+import { SampleViewerSensor } from '../SampleViewerSensor'
 
 // Review-status dot color, by semantic token. `bg-text-muted` is the default
 // for unreviewed / unknown statuses.
@@ -68,7 +70,12 @@ function ThumbnailCard({
         selected ? 'border-iris ring-2 ring-iris' : 'border-border hover:border-border-strong',
       )}
     >
-      {data?.url ? (
+      {sample.modality !== 'image' ? (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-text-muted">
+          <span className="text-2xl">{sample.modality === 'text' ? '📄' : '📈'}</span>
+          <span className="text-[10px] capitalize">{sample.modality}</span>
+        </div>
+      ) : data?.url ? (
         <img
           src={data.url}
           alt={`frame ${sample.frame_index ?? ''}`}
@@ -117,7 +124,7 @@ function ThumbnailCard({
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
         <p className="text-xs text-text-onAccent">
-          {sample.width}×{sample.height}
+          {sample.width != null && sample.height != null ? `${sample.width}×${sample.height}` : sample.modality}
           {sample.frame_index != null && ` · f${sample.frame_index}`}
         </p>
       </div>
@@ -192,6 +199,14 @@ export function Lightbox({
       <div className="flex max-h-[85vh] max-w-5xl flex-col items-center" onClick={(e) => e.stopPropagation()}>
         {isLoading || !data?.url ? (
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-text-onAccent/30 border-t-text-onAccent" />
+        ) : sample.modality === 'text' ? (
+          <div className="max-h-[70vh] w-full max-w-2xl overflow-auto">
+            <SampleViewerText blobUrl={data.url} />
+          </div>
+        ) : sample.modality === 'sensor' ? (
+          <div className="max-h-[70vh] w-full max-w-3xl overflow-auto">
+            <SampleViewerSensor blobUrl={data.url} />
+          </div>
         ) : (
           <div className="relative inline-block">
             <img src={data.url} alt={`frame ${sample.frame_index ?? ''}`} className="max-h-[80vh] max-w-full object-contain rounded-lg" />
@@ -224,7 +239,7 @@ export function Lightbox({
         )}
 
         <p className="text-text-onAccent/70 text-xs mt-3">
-          {sample.width}×{sample.height}
+          {sample.width != null && sample.height != null ? `${sample.width}×${sample.height}` : sample.modality}
           {sample.frame_index != null && ` · frame ${sample.frame_index}`}
           {` · ${index + 1} / ${samples.length}`}
         </p>

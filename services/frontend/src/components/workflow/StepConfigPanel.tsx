@@ -125,19 +125,35 @@ function FieldRow({
       break
     case 'range': {
       const num = typeof raw === 'number' ? raw : (spec.min ?? 0)
+      // Cap val_ratio so train + val never exceeds 1.
+      const trainRatio = typeof config.train_ratio === 'number' ? config.train_ratio : 0.8
+      const valRatio   = typeof config.val_ratio   === 'number' ? config.val_ratio   : 0.2
+      const effectiveMax = spec.key === 'val_ratio'
+        ? Math.min(spec.max ?? 1, Math.max(0.05, +(1 - trainRatio).toFixed(2)))
+        : spec.max
+      const clamped = Math.min(num, effectiveMax ?? num)
+      if (clamped !== num) set(clamped)
+      const testPct = Math.round((1 - trainRatio - valRatio) * 100)
       control = (
-        <div className="flex items-center gap-3">
-          <input
-            id={id}
-            type="range"
-            min={spec.min}
-            max={spec.max}
-            step={spec.step}
-            value={num}
-            onChange={(e) => set(Number(e.target.value))}
-            className="flex-1 accent-iris"
-          />
-          <span className="w-10 text-right text-xs tabular-nums text-text-secondary">{num}</span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <input
+              id={id}
+              type="range"
+              min={spec.min}
+              max={effectiveMax}
+              step={spec.step}
+              value={clamped}
+              onChange={(e) => set(Number(e.target.value))}
+              className="flex-1 accent-iris"
+            />
+            <span className="w-10 text-right text-xs tabular-nums text-text-secondary">{clamped}</span>
+          </div>
+          {spec.key === 'val_ratio' && (
+            <p className="text-xs text-text-muted">
+              train {Math.round(trainRatio * 100)}% · val {Math.round(valRatio * 100)}% · test {Math.max(0, testPct)}%
+            </p>
+          )}
         </div>
       )
       break

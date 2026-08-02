@@ -145,18 +145,12 @@ def test_models_maps_cvat_error_to_502(client, app_module, monkeypatch) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_annotate_multipart_body_is_uncallable_422(client, app_module, monkeypatch) -> None:
-    """BUG (pinned): annotate_task mixes a Pydantic body (`body: AnnotateRequest`)
-    with `files: list[UploadFile] = File(...)`. In a multipart request FastAPI
-    treats `body` as an embedded field that arrives as a raw string and is not
-    JSON-decoded (the field isn't `Json`-typed), so pydantic rejects it and the
-    request 422s before `annotate` is ever called. The fix is to take the fields
-    as individual `Form(...)` params (or annotate the body with `Form()`/`Json`).
-    Same defect as routers/cvat.py::cvat_annotate. Pinning current behavior."""
-    called = {"annotate": False}
+def test_annotate_calls_handler_with_form_params(client, app_module, monkeypatch) -> None:
+    """annotate_task now takes form fields, so the handler is reachable."""
+    called: dict = {}
 
     def _spy(**kwargs):
-        called["annotate"] = True
+        called.update(kwargs)
         return {"task_id": 1, "job_id": 2, "cvat_url": "http://x"}
 
     monkeypatch.setattr(app_module, "annotate", _spy)
@@ -167,5 +161,6 @@ def test_annotate_multipart_body_is_uncallable_422(client, app_module, monkeypat
         files={"files": ("a.jpg", io.BytesIO(b"img"), "image/jpeg")},
     )
 
-    assert res.status_code == 422, res.text
-    assert called["annotate"] is False  # never reached the handler body
+    assert res.status_code == 200, res.text
+    assert called.get("task_name") == "t"
+    assert called.get("function_id") == "fn"

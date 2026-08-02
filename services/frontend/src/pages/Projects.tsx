@@ -9,11 +9,13 @@ export default function Projects() {
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [taskType, setTaskType] = useState('detection')
+  const [modality, setModality] = useState('image')
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    await createProject.mutateAsync({ name, task_type: taskType })
+    await createProject.mutateAsync({ name, task_type: taskType, modality })
     setName('')
+    setModality('image')
     setShowForm(false)
   }
 
@@ -46,6 +48,13 @@ export default function Projects() {
               <option value="classification">Classification</option>
             </Select>
           </Field>
+          <Field label="Modality" htmlFor="project-modality">
+            <Select id="project-modality" value={modality} onChange={(e) => setModality(e.target.value)}>
+              <option value="image">Image / Video</option>
+              <option value="text">Text / NLP</option>
+              <option value="sensor">Sensor / Time-Series</option>
+            </Select>
+          </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
               Cancel
@@ -76,7 +85,7 @@ export default function Projects() {
               <Card className="flex items-center justify-between px-5 py-4 transition-all hover:border-iris hover:shadow-md">
                 <div>
                   <p className="font-semibold text-text-primary">{p.name}</p>
-                  <p className="mt-0.5 text-xs capitalize text-text-muted">{p.task_type}</p>
+                  <p className="mt-0.5 text-xs capitalize text-text-muted">{p.modality} · {p.task_type}</p>
                 </div>
                 <span className="text-lg text-text-muted">›</span>
               </Card>

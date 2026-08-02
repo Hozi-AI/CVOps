@@ -80,7 +80,12 @@ def fake_cvat_client():
     mod.push_review_task = push_review_task
     mod.register_webhook = register_webhook
     with patch.dict(sys.modules, {"cvops_cvat_client": mod}):
+        # Register the CVAT backend so get_backend("cvat") resolves during tests
+        from cvops_steps.labeling_backends import register_backend, _registry
+        from cvops_steps.labeling_backends.cvat import CvatLabelingBackend
+        register_backend(CvatLabelingBackend())
         yield calls
+        _registry.pop("cvat", None)  # clean up so tests don't bleed state
 
 
 async def _seed(session):
