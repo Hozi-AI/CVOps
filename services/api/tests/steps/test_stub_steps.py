@@ -117,6 +117,11 @@ def test_register_all_registers_all_steps(monkeypatch) -> None:
         ExportYoloStep.type_key,
         TrainStep.type_key,
         ImportDatasetStep.type_key,
+        # annotation types registered at startup
+        "annotation.text.span",
+        "annotation.text.classification",
+        "annotation.sensor.region",
+        "annotation.sensor.point",
     }
     assert {r.type_key for r in fresh.all()} == expected
 
