@@ -60,6 +60,7 @@ async def create_project(
         org_id=current_user.org_id,
         name=body.name,
         task_type=body.task_type,
+        modality=body.modality,
         settings=body.settings,
     )
     session.add(project)
@@ -89,6 +90,8 @@ async def update_project(
         proj.name = body.name
     if body.task_type is not None:
         proj.task_type = body.task_type
+    if body.modality is not None:
+        proj.modality = body.modality
     if body.default_ontology_id is not None:
         proj.default_ontology_id = body.default_ontology_id
     # Distinguish "omitted" from "explicit null" so the field can be cleared:
