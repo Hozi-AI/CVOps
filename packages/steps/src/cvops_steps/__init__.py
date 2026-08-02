@@ -46,6 +46,12 @@ def register_all() -> None:
     register_backend(CvatLabelingBackend())
     register_backend(LabelStudioBackend())
 
+    from cvops_steps.model_runners import register_runner  # noqa: PLC0415
+    from cvops_steps.model_runners.yolo import YoloModelRunner  # noqa: PLC0415
+    from cvops_steps.model_runners.llm import LlmModelRunner  # noqa: PLC0415
+    register_runner(YoloModelRunner())
+    register_runner(LlmModelRunner())
+
     for type_key, filename in _ANNOTATION_TYPES.items():
         with open(_ANN_SCHEMA_DIR / filename) as f:
             schema = json.load(f)
