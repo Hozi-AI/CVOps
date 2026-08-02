@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useModels, useUploadModel, useDeployModelToCvat } from '../api/models'
 import { useDatasets, useCommits } from '../api/datasets'
+import { useCvatModels, useDeleteCvatModel } from '../api/cvat'
 import { toast } from '../store/toast'
-import { Breadcrumbs, Button, Card, EmptyState, ErrorState, Field, Input, Label, Select, SkeletonList } from '../components/ui'
+import { Badge, Breadcrumbs, Button, Card, Dialog, EmptyState, ErrorState, Field, Input, Label, Select, SkeletonList, Spinner } from '../components/ui'
 import { formatValue } from '../lib/format'
 
 export default function Models() {
@@ -12,6 +13,8 @@ export default function Models() {
   const { data: datasets } = useDatasets(projectId)
   const upload = useUploadModel(projectId!)
   const deployCvat = useDeployModelToCvat()
+  const { data: cvatModels, isLoading: cvatLoading } = useCvatModels()
+  const deleteModel = useDeleteCvatModel()
 
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
@@ -21,6 +24,7 @@ export default function Models() {
   const [commitId, setCommitId] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
   const { data: commitsData } = useCommits(datasetId || undefined)
   const commits = commitsData?.pages.flatMap((p) => p.items) ?? []
@@ -43,7 +47,20 @@ export default function Models() {
       resetForm()
     } catch {
       toast.dismiss(toastId)
-      // Global mutationCache.onError surfaces the specific error.
+    }
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return
+    const { id, name: modelName } = pendingDelete
+    setPendingDelete(null)
+    const toastId = toast.info(`Deleting "${modelName}"…`, undefined, 0)
+    try {
+      await deleteModel.mutateAsync(id)
+      toast.dismiss(toastId)
+      toast.success(`Model "${modelName}" deleted from CVAT`)
+    } catch {
+      toast.dismiss(toastId)
     }
   }
 
@@ -127,7 +144,7 @@ export default function Models() {
 
       {isLoading && <SkeletonList rows={3} />}
       {isError && <ErrorState description="Could not load models for this project." onRetry={() => refetch()} />}
-      {models?.length === 0 && (
+      {!isLoading && !isError && models?.length === 0 && (
         <EmptyState title="No models yet" description='Upload a .pt file or run a training workflow.' />
       )}
 
@@ -160,11 +177,11 @@ export default function Models() {
                   disabled={deployCvat.isPending}
                   onClick={async (e) => {
                     e.preventDefault()
-                    const name = window.prompt('CVAT model name', m.name || m.base_model || 'model')
-                    if (!name) return
+                    const deployName = window.prompt('CVAT model name', m.name || m.base_model || 'model')
+                    if (!deployName) return
                     try {
-                      await deployCvat.mutateAsync({ modelId: m.id, modelName: name })
-                      toast.success(`Deployed "${name}" to CVAT`)
+                      await deployCvat.mutateAsync({ modelId: m.id, modelName: deployName })
+                      toast.success(`Deployed "${deployName}" to CVAT`)
                     } catch {
                       // global error handler surfaces the message
                     }
@@ -177,6 +194,64 @@ export default function Models() {
           ))}
         </div>
       )}
+
+      {/* ── Deployed in CVAT ──────────────────────────────────────────── */}
+      <div className="mt-10">
+        <h3 className="mb-3 text-base font-semibold text-text-primary">Deployed in CVAT</h3>
+
+        {cvatLoading && (
+          <div className="flex items-center gap-2 py-6 text-sm text-text-muted">
+            <Spinner className="h-4 w-4" /> Loading…
+          </div>
+        )}
+
+        {!cvatLoading && cvatModels?.length === 0 && (
+          <p className="text-sm text-text-muted">No models currently deployed in CVAT.</p>
+        )}
+
+        {cvatModels && cvatModels.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {cvatModels.map((m) => (
+              <Card key={m.id} className="px-5 py-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-semibold text-text-primary">{m.name}</p>
+                    <p className="mt-1 font-mono text-xs text-text-muted">{m.id}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="info" className="capitalize">{m.kind || 'detector'}</Badge>
+                    <button
+                      onClick={() => setPendingDelete({ id: m.id, name: m.name })}
+                      disabled={deleteModel.isPending}
+                      className="text-text-muted transition-colors hover:text-error disabled:opacity-40"
+                      title="Delete from CVAT"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {m.description && <p className="mt-2 text-xs text-text-secondary">{m.description}</p>}
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="Delete model"
+      >
+        <p className="text-sm text-text-secondary">
+          Delete <span className="font-medium text-text-primary">{pendingDelete?.name}</span> from CVAT? This cannot be undone.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setPendingDelete(null)}>Cancel</Button>
+          <Button variant="danger" loading={deleteModel.isPending} onClick={confirmDelete}>Delete</Button>
+        </div>
+      </Dialog>
     </div>
   )
 }
