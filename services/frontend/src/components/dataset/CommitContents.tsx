@@ -225,7 +225,7 @@ export function CommitContents({
   // Auto-load remaining pages when re-split panel is open so we have all IDs.
   useEffect(() => {
     if (showResplit && q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage()
-  }, [showResplit, q.hasNextPage, q.isFetchingNextPage, q.fetchNextPage])
+  }, [showResplit, q])
 
   async function handleResplit() {
     const sampleIds = samples.map((s) => s.id)

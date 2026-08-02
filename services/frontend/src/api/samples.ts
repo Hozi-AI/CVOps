@@ -13,8 +13,9 @@ export interface Sample {
   project_id: string
   blob_hash: string
   source_id: string
-  width: number
-  height: number
+  modality: string
+  width: number | null
+  height: number | null
   frame_index: number | null
   perceptual_hash: string | null
   metadata: Record<string, unknown> | null
