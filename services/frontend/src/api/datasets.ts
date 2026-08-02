@@ -231,6 +231,17 @@ export function useDownloadCommit(datasetId: string | undefined, commitId: strin
   return { trigger, busy, label }
 }
 
+export function useDeleteDataset() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (dataset: Dataset) => {
+      await client.delete(`/datasets/${dataset.id}`)
+      return dataset
+    },
+    onSuccess: (dataset) => qc.invalidateQueries({ queryKey: ['datasets', dataset.project_id] }),
+  })
+}
+
 export function useCreateDataset() {
   const qc = useQueryClient()
   return useMutation({
