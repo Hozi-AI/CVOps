@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useModels, useUploadModel } from '../api/models'
+import { useModels, useUploadModel, useDeployModelToCvat } from '../api/models'
 import { useDatasets, useCommits } from '../api/datasets'
 import { toast } from '../store/toast'
 import { Breadcrumbs, Button, Card, EmptyState, ErrorState, Field, Input, Label, Select, SkeletonList } from '../components/ui'
@@ -11,6 +11,7 @@ export default function Models() {
   const { data: models, isLoading, isError, refetch } = useModels(projectId)
   const { data: datasets } = useDatasets(projectId)
   const upload = useUploadModel(projectId!)
+  const deployCvat = useDeployModelToCvat()
 
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
@@ -133,15 +134,15 @@ export default function Models() {
       {models && models.length > 0 && (
         <div className="space-y-2">
           {models.map((m) => (
-            <Link key={m.id} to={`/models/${m.id}`}>
-              <Card className="flex items-center justify-between px-5 py-4 transition-all hover:border-iris hover:shadow-md">
-                <div>
-                  <p className="font-semibold text-text-primary">{m.name ?? <span className="font-mono text-sm">{m.id.slice(0, 8)}…</span>}</p>
-                  <p className="mt-0.5 text-xs text-text-muted">
-                    {m.base_model ?? 'Unknown base'} · {new Date(m.created_at).toLocaleDateString()}
-                  </p>
-                  {m.description && <p className="mt-1 text-xs text-text-secondary">{m.description}</p>}
-                </div>
+            <Card key={m.id} className="flex items-center justify-between px-5 py-4">
+              <Link to={`/models/${m.id}`} className="min-w-0 flex-1">
+                <p className="font-semibold text-text-primary hover:text-iris-400">{m.name ?? <span className="font-mono text-sm">{m.id.slice(0, 8)}…</span>}</p>
+                <p className="mt-0.5 text-xs text-text-muted">
+                  {m.base_model ?? 'Unknown base'} · {new Date(m.created_at).toLocaleDateString()}
+                </p>
+                {m.description && <p className="mt-1 text-xs text-text-secondary">{m.description}</p>}
+              </Link>
+              <div className="ml-4 flex items-center gap-3">
                 {m.metrics && (
                   <div className="text-right">
                     {Object.entries(m.metrics)
@@ -154,8 +155,25 @@ export default function Models() {
                       ))}
                   </div>
                 )}
-              </Card>
-            </Link>
+                <Button
+                  variant="secondary"
+                  disabled={deployCvat.isPending}
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    const name = window.prompt('CVAT model name', m.name || m.base_model || 'model')
+                    if (!name) return
+                    try {
+                      await deployCvat.mutateAsync({ modelId: m.id, modelName: name })
+                      toast.success(`Deployed "${name}" to CVAT`)
+                    } catch {
+                      // global error handler surfaces the message
+                    }
+                  }}
+                >
+                  Deploy to CVAT
+                </Button>
+              </div>
+            </Card>
           ))}
         </div>
       )}

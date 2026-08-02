@@ -143,6 +143,17 @@ export function useModelArtifacts(modelId: string | undefined) {
   })
 }
 
+export function useDeployModelToCvat() {
+  return useMutation({
+    mutationFn: async ({ modelId, modelName }: { modelId: string; modelName: string }) => {
+      const { data } = await client.post(
+        `/models/${modelId}/cvat-deploy?model_name=${encodeURIComponent(modelName)}`,
+      )
+      return data
+    },
+  })
+}
+
 export function useUploadArtifact(modelId: string) {
   const qc = useQueryClient()
   return useMutation({
