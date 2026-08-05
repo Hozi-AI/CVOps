@@ -4,6 +4,7 @@ import { useDataset, useCommits, useReviewDataset } from '../api/datasets'
 import { usePinProject } from '../lib/useActiveProject'
 import { CommitGraph } from '../components/dataset/CommitGraph'
 import { CommitContents } from '../components/dataset/CommitContents'
+import { ImportDatasetDialog } from '../components/dataset/ImportDatasetDialog'
 import { Breadcrumbs, Button, ErrorState, SkeletonList } from '../components/ui'
 
 export default function DatasetView() {
@@ -14,6 +15,7 @@ export default function DatasetView() {
   const commitsQuery = useCommits(id)
   const reviewDataset = useReviewDataset()
   const [reviewError, setReviewError] = useState<string | null>(null)
+  const [addingData, setAddingData] = useState(false)
   usePinProject(dataset?.project_id)
 
   const commits = useMemo(
@@ -79,12 +81,22 @@ export default function DatasetView() {
         ]}
       />
 
+      <ImportDatasetDialog
+        projectId={dataset.project_id}
+        open={addingData}
+        onClose={() => setAddingData(false)}
+        lockedDatasetName={dataset.name}
+      />
+
       <div className="mb-4 flex items-start justify-between">
         <h2 className="text-xl font-bold text-text-primary">{dataset.name}</h2>
         <div className="flex flex-col items-end gap-1">
-          <Button onClick={startReview} loading={reviewDataset.isPending}>
-            Review in CVAT
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setAddingData(true)}>Add Data</Button>
+            <Button onClick={startReview} loading={reviewDataset.isPending}>
+              Review in CVAT
+            </Button>
+          </div>
           {reviewError && <p className="text-xs text-error">{reviewError}</p>}
         </div>
       </div>

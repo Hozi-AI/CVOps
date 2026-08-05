@@ -24,10 +24,12 @@ export function ImportDatasetDialog({
   projectId,
   open,
   onClose,
+  lockedDatasetName,
 }: {
   projectId: string
   open: boolean
   onClose: () => void
+  lockedDatasetName?: string
 }) {
   const navigate = useNavigate()
   const { data: ontologies = [], isLoading: ontsLoading } = useOntologies()
@@ -37,7 +39,7 @@ export function ImportDatasetDialog({
   const [folderFiles, setFolderFiles] = useState<File[] | null>(null)
   const [folderPath, setFolderPath] = useState('')
   const [ontologyId, setOntologyId] = useState('')
-  const [datasetName, setDatasetName] = useState('Imported Dataset')
+  const [datasetName, setDatasetName] = useState(lockedDatasetName ?? 'Imported Dataset')
   const [commitMessage, setCommitMessage] = useState('')
   const [format, setFormat] = useState('auto')
   const [review, setReview] = useState(false)
@@ -198,9 +200,11 @@ export function ImportDatasetDialog({
           </Field>
         )}
 
-        <Field label="Dataset name" htmlFor="datasetName">
-          <Input id="datasetName" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} />
-        </Field>
+        {!lockedDatasetName && (
+          <Field label="Dataset name" htmlFor="datasetName">
+            <Input id="datasetName" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} />
+          </Field>
+        )}
 
         <Field label="Commit message (optional)" htmlFor="commitMessage">
           <Input id="commitMessage" value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)}

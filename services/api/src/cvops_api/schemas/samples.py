@@ -27,6 +27,7 @@ class SampleOut(BaseModel):
     project_id: uuid.UUID
     blob_hash: str
     source_id: uuid.UUID
+    modality: str
     width: int
     height: int
     frame_index: int | None = None

@@ -18,7 +18,6 @@ import TrainingContainers from './pages/TrainingContainers'
 import Ontologies from './pages/Ontologies'
 import Activity from './pages/Activity'
 import ProjectSettings from './pages/ProjectSettings'
-import ImportDataset from './pages/ImportDataset'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import { isAuthenticated } from './api/auth'
@@ -73,7 +72,7 @@ export default function App() {
         <Route path="/models/:id"                            element={<ModelDetail />} />
         <Route path="/projects/:id/training-containers"      element={<TrainingContainers />} />
         <Route path="/projects/:id/settings"                 element={<ProjectSettings />} />
-        <Route path="/projects/:id/import"                   element={<ImportDataset />} />
+        <Route path="/projects/:id/import" element={<Navigate to="../datasets" replace />} />
       </Route>
     </Routes>
     </>
