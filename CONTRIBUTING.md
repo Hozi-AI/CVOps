@@ -16,7 +16,7 @@ Thank you for considering a contribution. This document explains how to get set 
 ## Development setup
 
 ```bash
-git clone https://github.com/YehudaBriskman/CVOps.git
+git clone https://github.com/Hozi-AI/CVOps.git
 cd CVOps
 cp .env.example .env          # fill in local secrets
 sh scripts/git-setup.sh       # install git hooks (enforces commit format)
