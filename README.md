@@ -14,8 +14,8 @@ Track datasets · version models · orchestrate workflows · audit everything - 
 
 <br>
 
-[![API CI](https://github.com/YehudaBriskman/CVOps/actions/workflows/ci-api.yml/badge.svg)](https://github.com/YehudaBriskman/CVOps/actions/workflows/ci-api.yml)
-[![Lint](https://github.com/YehudaBriskman/CVOps/actions/workflows/lint-api.yml/badge.svg)](https://github.com/YehudaBriskman/CVOps/actions/workflows/lint-api.yml)
+[![Python CI](https://github.com/Hozi-AI/CVOps/actions/workflows/ci-python.yml/badge.svg)](https://github.com/Hozi-AI/CVOps/actions/workflows/ci-python.yml)
+[![Lint](https://github.com/Hozi-AI/CVOps/actions/workflows/lint-python.yml/badge.svg)](https://github.com/Hozi-AI/CVOps/actions/workflows/lint-python.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](manifests/docker-compose.yml)
@@ -92,7 +92,7 @@ Every node in that graph is a **Step** - composable, versioned, idempotent. Ever
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/YehudaBriskman/CVOps.git
+git clone https://github.com/Hozi-AI/CVOps.git
 cd CVOps
 cp manifests/.env.example manifests/.env   # fill in JWT_SECRET and Garage secrets
 
@@ -552,7 +552,7 @@ cp manifests/.env.example manifests/.env
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. Short version:
 
 ```bash
-git clone https://github.com/YehudaBriskman/CVOps.git
+git clone https://github.com/Hozi-AI/CVOps.git
 cd CVOps
 cp manifests/.env.example manifests/.env
 sh scripts/git-setup.sh          # install git hooks

@@ -49,16 +49,16 @@ work is feature completion, hardening, observability, and deployment — all tra
 
 | Old claim (stale) | Verified today | Tracking |
 |---|---|---|
-| All 6 steps raise `NotImplementedError` | Only `auto_label` is a stub; the rest are implemented | [#78](https://github.com/YehudaBriskman/CVOps/issues/78) |
-| Worker is an empty Celery shell; API uses `BackgroundTasks` | Redis-Streams workers all implemented | reliability: [#82](https://github.com/YehudaBriskman/CVOps/issues/82), [#83](https://github.com/YehudaBriskman/CVOps/issues/83) |
+| All 6 steps raise `NotImplementedError` | Only `auto_label` is a stub; the rest are implemented | [#78](https://github.com/Hozi-AI/CVOps/issues/78) |
+| Worker is an empty Celery shell; API uses `BackgroundTasks` | Redis-Streams workers all implemented | reliability: [#82](https://github.com/Hozi-AI/CVOps/issues/82), [#83](https://github.com/Hozi-AI/CVOps/issues/83) |
 | 13/15 frontend pages are stubs; no react-query; no SSE | Most pages built; react-query + SSE + auth all present | feature gaps → EPIC-2/3 |
-| Design tokens migrated only in `Header.tsx` | **Inverted** — only 3 files still hardcode colors | [#69](https://github.com/YehudaBriskman/CVOps/issues/69) |
+| Design tokens migrated only in `Header.tsx` | **Inverted** — only 3 files still hardcode colors | [#69](https://github.com/Hozi-AI/CVOps/issues/69) |
 | `any` types in the frontend | **0 found** | — |
-| eslint config missing | Still missing | [#91](https://github.com/YehudaBriskman/CVOps/issues/91) |
-| `.githooks/pre-commit` uses black/flake8 | Still stale (API moved to ruff) | [#92](https://github.com/YehudaBriskman/CVOps/issues/92) |
-| `model-deployer POST /deploy` unauthed | Confirmed | [#101](https://github.com/YehudaBriskman/CVOps/issues/101) |
-| Healthchecks only on infra services | Confirmed | [#85](https://github.com/YehudaBriskman/CVOps/issues/85) |
-| `WORKER_TOKEN` defined but unenforced | Confirmed — worker sends `Bearer`, API never validates | [#71](https://github.com/YehudaBriskman/CVOps/issues/71) |
+| eslint config missing | Still missing | [#91](https://github.com/Hozi-AI/CVOps/issues/91) |
+| `.githooks/pre-commit` uses black/flake8 | Still stale (API moved to ruff) | [#92](https://github.com/Hozi-AI/CVOps/issues/92) |
+| `model-deployer POST /deploy` unauthed | Confirmed | [#101](https://github.com/Hozi-AI/CVOps/issues/101) |
+| Healthchecks only on infra services | Confirmed | [#85](https://github.com/Hozi-AI/CVOps/issues/85) |
+| `WORKER_TOKEN` defined but unenforced | Confirmed — worker sends `Bearer`, API never validates | [#71](https://github.com/Hozi-AI/CVOps/issues/71) |
 
 ---
 
@@ -86,10 +86,10 @@ work is feature completion, hardening, observability, and deployment — all tra
 
 | Issue | Severity | Root cause |
 |---|---|---|
-| [#48](https://github.com/YehudaBriskman/CVOps/issues/48) | P0 | Signup/login renders the FastAPI 422 `detail` **array** as a React child → crash |
-| [#49](https://github.com/YehudaBriskman/CVOps/issues/49) | P1 | Avatar click logs out immediately; needs an account menu |
-| [#50](https://github.com/YehudaBriskman/CVOps/issues/50) | P2 | Add-to-collection silently drops duplicates (UX feedback gap) |
-| [#51](https://github.com/YehudaBriskman/CVOps/issues/51) | P1 | Commit view shows only the delta; needs full membership + expandable diff |
+| [#48](https://github.com/Hozi-AI/CVOps/issues/48) | P0 | Signup/login renders the FastAPI 422 `detail` **array** as a React child → crash |
+| [#49](https://github.com/Hozi-AI/CVOps/issues/49) | P1 | Avatar click logs out immediately; needs an account menu |
+| [#50](https://github.com/Hozi-AI/CVOps/issues/50) | P2 | Add-to-collection silently drops duplicates (UX feedback gap) |
+| [#51](https://github.com/Hozi-AI/CVOps/issues/51) | P1 | Commit view shows only the delta; needs full membership + expandable diff |
 
 ---
 
@@ -99,16 +99,16 @@ work is feature completion, hardening, observability, and deployment — all tra
 
 | Milestone | Theme | Count |
 |---|---|---|
-| [EPIC-1](https://github.com/YehudaBriskman/CVOps/milestone/1) | Known UX bugs (user-reported) | 4 |
-| [EPIC-2](https://github.com/YehudaBriskman/CVOps/milestone/2) | Frontend feature completion | 12 |
-| [EPIC-3](https://github.com/YehudaBriskman/CVOps/milestone/3) | Frontend quality & hardening | 8 |
-| [EPIC-4](https://github.com/YehudaBriskman/CVOps/milestone/4) | Backend API gaps | 7 |
-| [EPIC-5](https://github.com/YehudaBriskman/CVOps/milestone/5) | Steps & workers | 7 |
-| [EPIC-6](https://github.com/YehudaBriskman/CVOps/milestone/6) | Infra / DevOps | 6 |
-| [EPIC-7](https://github.com/YehudaBriskman/CVOps/milestone/7) | CI / CD | 5 |
-| [EPIC-8](https://github.com/YehudaBriskman/CVOps/milestone/8) | Observability | 5 |
-| [EPIC-9](https://github.com/YehudaBriskman/CVOps/milestone/9) | Security & production deployment | 6 |
-| [EPIC-10](https://github.com/YehudaBriskman/CVOps/milestone/10) | Data-model considerations (design docs) | 6 |
+| [EPIC-1](https://github.com/Hozi-AI/CVOps/milestone/1) | Known UX bugs (user-reported) | 4 |
+| [EPIC-2](https://github.com/Hozi-AI/CVOps/milestone/2) | Frontend feature completion | 12 |
+| [EPIC-3](https://github.com/Hozi-AI/CVOps/milestone/3) | Frontend quality & hardening | 8 |
+| [EPIC-4](https://github.com/Hozi-AI/CVOps/milestone/4) | Backend API gaps | 7 |
+| [EPIC-5](https://github.com/Hozi-AI/CVOps/milestone/5) | Steps & workers | 7 |
+| [EPIC-6](https://github.com/Hozi-AI/CVOps/milestone/6) | Infra / DevOps | 6 |
+| [EPIC-7](https://github.com/Hozi-AI/CVOps/milestone/7) | CI / CD | 5 |
+| [EPIC-8](https://github.com/Hozi-AI/CVOps/milestone/8) | Observability | 5 |
+| [EPIC-9](https://github.com/Hozi-AI/CVOps/milestone/9) | Security & production deployment | 6 |
+| [EPIC-10](https://github.com/Hozi-AI/CVOps/milestone/10) | Data-model considerations (design docs) | 6 |
 
 Labels encode **type** (`bug`/`feature`/`chore`/`test`/`security`/`infra`/`ci`/`observability`/`refactor`),
 **area** (`frontend`/`api`/`steps`/`worker`/…), and **priority** (`P0`–`P3`).
@@ -117,12 +117,12 @@ Labels encode **type** (`bug`/`feature`/`chore`/`test`/`security`/`infra`/`ci`/`
 
 ## 5. Suggested order of attack
 
-1. **Stop the bleeding (P0):** [#48](https://github.com/YehudaBriskman/CVOps/issues/48) (auth crash),
-   [#101](https://github.com/YehudaBriskman/CVOps/issues/101) (model-deployer auth).
+1. **Stop the bleeding (P0):** [#48](https://github.com/Hozi-AI/CVOps/issues/48) (auth crash),
+   [#101](https://github.com/Hozi-AI/CVOps/issues/101) (model-deployer auth).
 2. **Close the known-bug set + core safety (P1):** #49, #51, plus
-   [#71](https://github.com/YehudaBriskman/CVOps/issues/71) (worker token),
-   [#88](https://github.com/YehudaBriskman/CVOps/issues/88) (secrets/env validation),
-   [#96](https://github.com/YehudaBriskman/CVOps/issues/96) (structured logging).
+   [#71](https://github.com/Hozi-AI/CVOps/issues/71) (worker token),
+   [#88](https://github.com/Hozi-AI/CVOps/issues/88) (secrets/env validation),
+   [#96](https://github.com/Hozi-AI/CVOps/issues/96) (structured logging).
 3. **MVP feature completion (P1):** ontology editor, sample lightbox, `auto_label`, stream
    reliability, worker-cvat in compose, the CI gates, group-aware split default.
 4. **Important (P2):** rest of EPIC-2/3/4 + healthchecks + endpoint tests.
