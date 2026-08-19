@@ -14,8 +14,8 @@ Track datasets · version models · orchestrate workflows · audit everything - 
 
 <br>
 
-[![API CI](https://github.com/Hozi-AI/CVOps/actions/workflows/ci-api.yml/badge.svg)](https://github.com/Hozi-AI/CVOps/actions/workflows/ci-api.yml)
-[![Lint](https://github.com/Hozi-AI/CVOps/actions/workflows/lint-api.yml/badge.svg)](https://github.com/Hozi-AI/CVOps/actions/workflows/lint-api.yml)
+[![Python CI](https://github.com/Hozi-AI/CVOps/actions/workflows/ci-python.yml/badge.svg)](https://github.com/Hozi-AI/CVOps/actions/workflows/ci-python.yml)
+[![Lint](https://github.com/Hozi-AI/CVOps/actions/workflows/lint-python.yml/badge.svg)](https://github.com/Hozi-AI/CVOps/actions/workflows/lint-python.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](manifests/docker-compose.yml)
