@@ -6,6 +6,7 @@ export interface Project {
   org_id: string
   name: string
   task_type: string
+  modality: string
   default_ontology_id: string | null
   default_ingest_workflow_id: string | null
   created_at: string
@@ -35,7 +36,7 @@ export function useProject(id: string | undefined) {
 export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (body: { name: string; task_type?: string }) => {
+    mutationFn: async (body: { name: string; task_type?: string; modality?: string }) => {
       const { data } = await client.post<Project>('/projects/', body)
       return data
     },
@@ -46,7 +47,7 @@ export function useCreateProject() {
 export function useUpdateProject(id: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (body: { name?: string; task_type?: string; default_ingest_workflow_id?: string | null }) => {
+    mutationFn: async (body: { name?: string; task_type?: string; modality?: string; default_ingest_workflow_id?: string | null; default_ontology_id?: string | null }) => {
       const { data } = await client.patch<Project>(`/projects/${id}`, body)
       return data
     },

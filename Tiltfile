@@ -141,6 +141,7 @@ def envreq(key):
 config.define_bool('cvat')
 config.define_bool('training')
 config.define_bool('heavy')
+config.define_bool('no-yolo-base')
 cfg = config.parse()
 
 def _truthy(v):
@@ -246,6 +247,20 @@ if ENABLE_TRAINING:
         links=[link('http://localhost:5000', 'mlflow ui')],
     )
 
+# ── Global teardown hook ─────────────────────────────────────────────────────
+# Always declared (outside ENABLE_CVAT) so `tilt down` cleans up the
+# cvops-cvat compose project and any stray nuclio containers even when this
+# session was started without --cvat.
+local_resource('external-cleanup',
+    cmd='''
+        docker compose -p cvops-cvat down 2>/dev/null || true
+        docker ps -aq --filter name=nuclio | xargs -r docker rm -f 2>/dev/null || true
+    ''',
+    labels=['1-infra'],
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+)
+
 # ── CVAT stack (from docker-compose.override.yml) ───────────────────────────
 # Everything CVAT-related lives behind ENABLE_CVAT: the external network, the
 # docker-socket widening (needed by nuctl/the CVAT worker), the submodule
@@ -279,13 +294,11 @@ if ENABLE_CVAT:
     )
 
     # CVAT's compose bind-mounts config files (vector.toml, grafana_conf.yml, …)
-    # straight out of the `services/cvat` git submodule. If the submodule isn't
-    # checked out, those host paths don't exist and Docker silently creates them as
-    # root-owned *directories* — which then fail to mount onto the container's
-    # config *files*. Initialise the submodule before any CVAT container starts so
-    # the real files are always present. Idempotent: a no-op once checked out.
+    # from services/cvat/components/analytics/. These were vendored manually
+    # (see docs/09-gaps-and-considerations.md §F) because the git submodule
+    # cannot be fetched reliably. We just verify the files exist here.
     local_resource('cvat-submodule',
-        cmd='git submodule update --init services/cvat',
+        cmd='test -f services/cvat/components/analytics/vector/vector.toml && test -f services/cvat/components/analytics/grafana_conf.yml || { echo "CVAT config files missing — see docs/09-gaps-and-considerations.md section F"; exit 1; }',
         labels=['1-infra'],
     )
 
@@ -316,11 +329,10 @@ if ENABLE_CVAT:
     dc_resource('cvat_worker_quality_reports', labels=['3-cvat'])
     dc_resource('cvat_worker_chunks',          labels=['3-cvat'])
     dc_resource('cvat_worker_consensus',       labels=['3-cvat'])
-    # nuclio (auto-label serving) and cvat_grafana (CVAT's ClickHouse analytics UI)
-    # are profile-gated to `app`/`all` in the override, so the Tilt inner loop skips
-    # them — no dc_resource here (dc_resource on an unloaded service errors). They
-    # come up under `docker compose --profile app`. cvat_vector is profile-less, so
-    # it loads and is labelled.
+    # nuclio is required for YOLO model deployment; cvat_grafana (analytics UI) is
+    # still profile-gated to `app`/`all` and skipped by the Tilt inner loop.
+    # cvat_vector is profile-less, so it loads and is labelled.
+    dc_resource('nuclio',              labels=['3-cvat'], resource_deps=['cvat-network', 'cvat-submodule'])
     dc_resource('cvat_vector',         labels=['3-cvat'], resource_deps=['cvat-submodule'])
 
 # Training-queue worker (container — torch/ultralytics live on its image, so it
@@ -560,6 +572,17 @@ local_resource('worker-preprocessing',
 # Entry point is `python -m worker_cvat` (→ __main__ → worker.main). The env is
 # the union of both roles: CVAT_URL (sync, cvat-client) + CVAT_HOST (deploy).
 if ENABLE_CVAT:
+    # Pre-build the YOLO Nuclio base image so function deploys skip the heavy
+    # pip install step. Built once on first `tilt up --cvat`; rebuilt only when
+    # the Dockerfile changes. YOLO_BASE_IMAGE points worker-cvat at this image.
+    local_resource('yolo-base-image',
+        cmd='docker build -t cvops/yolo-nuclio-base:latest -f services/worker-cvat/yolo-base.Dockerfile services/worker-cvat',
+        deps=['services/worker-cvat/yolo-base.Dockerfile'],
+        labels=['3-cvat'],
+        resource_deps=['cvat-network'],
+        auto_init=not (cfg.get('no-yolo-base') or _truthy(env.get('CVOPS_NO_YOLO_BASE', ''))),
+    )
+
     worker_cvat_env = dict(api_env)
     worker_cvat_env.update({
         'REDIS_STREAM':        'cvat',
@@ -571,6 +594,8 @@ if ENABLE_CVAT:
         'CVAT_PASSWORD':       envreq('CVAT_PASSWORD'),
         # deploy path (deployer/cvat_client read CVAT_HOST + nuctl)
         'NUCTL_PATH':          str(local('pwd', quiet=True)).strip() + '/services/worker-cvat/nuctl',
+        # pre-built base image — avoids pip install on every function deploy
+        'YOLO_BASE_IMAGE':     'cvops/yolo-nuclio-base:latest',
     })
     cvat_host_raw = env.get('CVAT_HOST', 'localhost')
     worker_cvat_env['CVAT_HOST'] = cvat_host_raw if cvat_host_raw.startswith('http') else 'http://%s:8080' % cvat_host_raw

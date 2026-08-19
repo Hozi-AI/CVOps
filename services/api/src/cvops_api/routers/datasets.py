@@ -3,8 +3,8 @@ from __future__ import annotations
 import base64
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from datetime import datetime, UTC
 
 from sqlalchemy import select, tuple_, update
 from sqlalchemy.engine import CursorResult
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, cast
 
 from cvops_api.core.auth import get_current_user
+from cvops_api.core.storage import get_storage, public_s3_endpoint
 from cvops_api.core.audit import emit_event
 from cvops_api.core.pagination import decode_cursor_parts, decode_cursor_uuid
 from cvops_api.core.sample_view import build_sample_outs
@@ -90,7 +91,9 @@ async def list_datasets(
     session: AsyncSession = Depends(get_session),
 ) -> list[DatasetOut]:
     await _check_project(project_id, current_user, session)
-    r = await session.execute(select(Dataset).where(Dataset.project_id == project_id))
+    r = await session.execute(
+        select(Dataset).where(Dataset.project_id == project_id, Dataset.deleted_at.is_(None))
+    )
     return [DatasetOut.model_validate(d) for d in r.scalars().all()]
 
 
@@ -124,6 +127,22 @@ async def get_dataset(
         raise HTTPException(status_code=404, detail="Dataset not found")
     await _check_project(dataset.project_id, current_user, session)
     return DatasetOut.model_validate(dataset)
+
+
+
+@router.delete("/datasets/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dataset(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    r = await session.execute(select(Dataset).where(Dataset.id == id, Dataset.deleted_at.is_(None)))
+    dataset = r.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    await _check_project(dataset.project_id, current_user, session)
+    dataset.deleted_at = datetime.now(UTC)
+    await session.commit()
 
 
 # ── Review in CVAT ────────────────────────────────────────────────────────────
@@ -205,7 +224,7 @@ async def review_dataset(
         ontology_id = (
             await session.execute(
                 select(Ontology.id)
-                .where(Ontology.project_id == dataset.project_id, Ontology.deleted_at.is_(None))
+                .where(Ontology.org_id == proj.org_id, Ontology.deleted_at.is_(None))
                 .order_by(Ontology.version.desc())
                 .limit(1)
             )
@@ -652,6 +671,7 @@ async def create_commit_from_samples(
             "branch": body.branch_name,
             "from_samples": True,
         },
+        org_id=current_user.org_id,
     )
     await session.commit()
     return CommitFromSamplesOut(
@@ -739,6 +759,84 @@ async def train_commit(
     await advance_workflow(session, run.id, current_user.id)
     await session.refresh(run)
     return RunOut.model_validate(run)
+
+
+@router.post(
+    "/datasets/{id}/commits/{commit_id}/export",
+    response_model=RunOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def export_commit(
+    id: uuid.UUID,
+    commit_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> RunOut:
+    """Dispatch a standalone export_yolo run for this commit (for download)."""
+    r = await session.execute(select(Dataset).where(Dataset.id == id))
+    dataset = r.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    await _check_project(dataset.project_id, current_user, session)
+
+    rc = await session.execute(
+        select(Commit).where(Commit.id == commit_id, Commit.dataset_id == dataset.id)
+    )
+    if rc.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Commit not found")
+
+    definition = {
+        "steps": [
+            {
+                "id": "export",
+                "type": "step.export_yolo",
+                "config": {},
+                "inputs": {"commit_id": str(commit_id)},
+            }
+        ],
+        "edges": [],
+    }
+    run = await create_adhoc_run(session, dataset.project_id, definition, {}, current_user.id)
+    await advance_workflow(session, run.id, current_user.id)
+    await session.refresh(run)
+    return RunOut.model_validate(run)
+
+
+@router.get("/datasets/{id}/commits/{commit_id}/export-url")
+async def commit_export_url(
+    id: uuid.UUID,
+    commit_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return a presigned download URL for the most recent succeeded export of this commit."""
+    from sqlalchemy import text as sa_text
+
+    r = await session.execute(select(Dataset).where(Dataset.id == id))
+    dataset = r.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    await _check_project(dataset.project_id, current_user, session)
+
+    row = (
+        await session.execute(
+            sa_text(
+                "SELECT output_refs->>'export_blob_hash' AS hash FROM runs "
+                "WHERE step_type = 'step.export_yolo' "
+                "AND input_refs->>'commit_id' = :cid "
+                "AND status = 'succeeded' "
+                "ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"cid": str(commit_id)},
+        )
+    ).first()
+    if row is None or not row[0]:
+        raise HTTPException(status_code=404, detail="No export found for this commit — run an export first")
+
+    endpoint = public_s3_endpoint(request.url.hostname)
+    url = await get_storage().get_presigned_get(row[0], endpoint=endpoint)
+    return {"url": url, "blob_hash": row[0]}
 
 
 # ── Refs ──────────────────────────────────────────────────────────────────────

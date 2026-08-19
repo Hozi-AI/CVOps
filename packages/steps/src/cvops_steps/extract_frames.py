@@ -117,7 +117,7 @@ class ExtractFramesStep(Step):
         from sqlalchemy import text  # noqa: PLC0415
 
         source_id = inputs["source_id"]
-        interval_seconds = float(config["interval_seconds"])
+        interval_seconds = float(config.get("interval_seconds", 2.0))
         max_frames = config.get("max_frames")
 
         async def _set_source_status(status: str) -> None:
@@ -213,10 +213,10 @@ class ExtractFramesStep(Step):
             sample_id = str(uuid.uuid4())
             res = await ctx.session.execute(
                 text(
-                    "INSERT INTO samples (id, project_id, blob_hash, source_id, width, "
+                    "INSERT INTO samples (id, project_id, blob_hash, source_id, modality, width, "
                     "height, frame_index, thumbnail_hash) VALUES "
                     "(CAST(:id AS uuid), CAST(:pid AS uuid), :bh, CAST(:sid AS uuid), "
-                    ":w, :h, NULL, :th) "
+                    "'image', :w, :h, NULL, :th) "
                     "ON CONFLICT (project_id, blob_hash) DO NOTHING RETURNING id"
                 ),
                 {
@@ -261,10 +261,10 @@ class ExtractFramesStep(Step):
             # (e.g. tests) has no server default for it.
             res = await ctx.session.execute(
                 text(
-                    "INSERT INTO samples (id, project_id, blob_hash, source_id, width, "
+                    "INSERT INTO samples (id, project_id, blob_hash, source_id, modality, width, "
                     "height, frame_index, thumbnail_hash) VALUES "
                     "(CAST(:id AS uuid), CAST(:pid AS uuid), :bh, CAST(:sid AS uuid), "
-                    ":w, :h, :fi, :th) "
+                    "'image', :w, :h, :fi, :th) "
                     "ON CONFLICT (project_id, blob_hash) DO NOTHING RETURNING id"
                 ),
                 {

@@ -48,11 +48,6 @@ spec:
   build:
     baseImage: {BASE_IMAGE}
     directives:
-      preCopy:
-        - kind: RUN
-          value: apt-get update && apt-get install -y --no-install-recommends libxcb1 libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
-        - kind: RUN
-          value: pip install --no-cache-dir ultralytics pillow numpy
       postCopy:
         - kind: ENV
           value: MODEL_PATH=/opt/nuclio/model.pt

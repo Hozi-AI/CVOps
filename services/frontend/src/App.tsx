@@ -15,8 +15,10 @@ import Runs from './pages/Runs'
 import Models from './pages/Models'
 import ModelDetail from './pages/ModelDetail'
 import TrainingContainers from './pages/TrainingContainers'
-import CvatModels from './pages/CvatModels'
+import Ontologies from './pages/Ontologies'
+import Activity from './pages/Activity'
 import ProjectSettings from './pages/ProjectSettings'
+import ImportDataset from './pages/ImportDataset'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import { isAuthenticated } from './api/auth'
@@ -48,7 +50,8 @@ export default function App() {
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/projects" replace />} />
         <Route path="/projects"                              element={<Projects />} />
-        <Route path="/cvat-models"                           element={<CvatModels />} />
+        <Route path="/ontologies"                            element={<Ontologies />} />
+        <Route path="/activity"                              element={<Activity />} />
         <Route path="/projects/:id"                          element={<Project />} />
         <Route path="/projects/:id/data-sources"             element={<DataSources />} />
         <Route path="/projects/:id/samples"                  element={<SampleBrowser />} />
@@ -70,6 +73,7 @@ export default function App() {
         <Route path="/models/:id"                            element={<ModelDetail />} />
         <Route path="/projects/:id/training-containers"      element={<TrainingContainers />} />
         <Route path="/projects/:id/settings"                 element={<ProjectSettings />} />
+        <Route path="/projects/:id/import"                   element={<ImportDataset />} />
       </Route>
     </Routes>
     </>

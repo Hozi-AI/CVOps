@@ -48,6 +48,18 @@ class EventOut(BaseModel):
     created_at: datetime
 
 
+class ActivityEventOut(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    actor_id: uuid.UUID | None = None
+    actor_type: str | None = None
+    actor_email: str | None = None
+    entity_type: str
+    entity_id: uuid.UUID
+    action: str
+    payload: dict[str, Any] | None = None
+
+
 class GateResolve(BaseModel):
     resolution: str
 
@@ -58,3 +70,14 @@ class TrainCommitRequest(BaseModel):
     branch: str | None = None
     hyperparams: dict[str, Any] | None = None
     training_container_id: uuid.UUID | None = None
+
+
+class ImportRequest(BaseModel):
+    blob_hash: str | None = None
+    folder_path: str | None = None
+    format: str = "auto"
+    ontology_id: uuid.UUID | None = None
+    dataset_name: str = "Imported Dataset"
+    commit_message: str = "Imported dataset"
+    review: bool = False
+    split_strategy: dict[str, Any] = {}

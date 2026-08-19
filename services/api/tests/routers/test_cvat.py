@@ -243,40 +243,19 @@ async def test_list_cvat_models_deployer_error_502(factory) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_cvat_annotate_uncallable_via_multipart_422(factory) -> None:
-    # BUG: cvat_annotate mixes a plain Pydantic body (`body: AnnotateRequest`)
-    # with `files: list[UploadFile] = File(...)`. FastAPI therefore expects the
-    # model as an *embedded* multipart field named "body". In a multipart
-    # request that field arrives as a raw string, and FastAPI only JSON-decodes
-    # such a part when the field is annotated with `Json` (see
-    # fastapi.dependencies.utils._is_json_field) — which this endpoint is not.
-    # pydantic v2's model_validate rejects a JSON *string*, so EVERY normal
-    # multipart call to this route 422s before any deployer request is made.
-    # The endpoint is effectively uncallable as written. Pinning that behavior;
-    # documents the gap from docs/GAP_ANALYSIS.md. The deployer call is NOT
-    # mocked here precisely because it is never reached.
+async def test_cvat_annotate_accepts_form_params(factory) -> None:
+    """cvat_annotate should accept task_name/function_id as form fields, not JSON body."""
     user, project, _mv_id = await _seed(factory)
-    async with _client(factory, user) as c:
-        res = await c.post(
-            f"/projects/{project.id}/cvat-annotate",
-            data={"body": '{"task_name": "t1", "function_id": "yolo", "threshold": 0.5}'},
-            files={"files": ("img.jpg", b"\xff\xd8\xff fake", "image/jpeg")},
+    with respx.mock as mock:
+        # Mock the deployer response
+        mock.post(f"{cvat.DEPLOYER_URL}/annotate").mock(
+            return_value=httpx.Response(200, json={"task_id": 1, "job_id": 2, "cvat_url": "http://x"})
         )
-    assert res.status_code == 422, res.text
-    detail = res.json()["detail"]
-    assert any(err["loc"][-1] == "body" for err in detail), detail
-
-
-async def test_cvat_annotate_missing_body_422(factory) -> None:
-    # Even with only a file and no body part, the required `body` field is
-    # missing → 422 (still never reaches the deployer). Complements the case
-    # above by pinning the missing-field path.
-    user, project, _mv_id = await _seed(factory)
-    async with _client(factory, user) as c:
-        res = await c.post(
-            f"/projects/{project.id}/cvat-annotate",
-            files={"files": ("img.jpg", b"\xff\xd8\xff fake", "image/jpeg")},
-        )
-    assert res.status_code == 422, res.text
-    detail = res.json()["detail"]
-    assert any(err.get("type") == "missing" for err in detail), detail
+        async with _client(factory, user) as c:
+            res = await c.post(
+                f"/projects/{project.id}/cvat-annotate",
+                data={"task_name": "my-task", "function_id": "yolo-detector", "threshold": "0.3"},
+                files={"files": ("a.jpg", b"\xff\xd8\xff fake", "image/jpeg")},
+            )
+    assert res.status_code == 200, res.text
+    assert res.json() == {"task_id": 1, "job_id": 2, "cvat_url": "http://x"}

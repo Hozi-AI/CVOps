@@ -12,6 +12,7 @@ import {
   useReactFlow,
   BackgroundVariant,
   MarkerType,
+  ConnectionMode,
 } from '@xyflow/react'
 import type { Connection, Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -25,8 +26,9 @@ import { useCreateRun } from '../api/runs'
 import { useRegistryTypes } from '../api/registry'
 import { usePinProject } from '../lib/useActiveProject'
 import { STEP_TYPES } from '../lib/stepCatalog'
-import { STEP_META, stepColor, stepLabel, resolveInputs, buildInputs } from '../lib/stepMeta'
+import { STEP_META, stepColor, stepLabel, resolveInputs, buildInputs, extractRunParams } from '../lib/stepMeta'
 import { Button, Drawer, Field, Input } from '../components/ui'
+import { RunParamsDialog } from '../components/runs/RunParamsDialog'
 import { toast } from '../store/toast'
 import { validateDag, layeredLayout, type GraphNode, type GraphEdge } from '../lib/workflowGraph'
 
@@ -115,6 +117,23 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
   const [loaded, setLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showIssues, setShowIssues] = useState(false)
+  const [paramsDialogOpen, setParamsDialogOpen] = useState(false)
+  const [pendingParams, setPendingParams] = useState<string[]>([])
+  const [nameValue, setNameValue] = useState(workflow?.name ?? '')
+
+  useEffect(() => {
+    if (workflow?.name) setNameValue(workflow.name)
+  }, [workflow?.name])
+
+  async function handleNameSave() {
+    const trimmed = nameValue.trim()
+    if (!trimmed || trimmed === workflow?.name) return
+    try {
+      await updateWorkflow.mutateAsync({ name: trimmed })
+    } catch {
+      setNameValue(workflow?.name ?? '')
+    }
+  }
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
 
@@ -195,7 +214,7 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
       setNodes((nds) => [
         ...nds,
         {
-          id: `${typeKey}-${Date.now()}`,
+          id: `${typeKey.replace(/\./g, '_')}-${Date.now()}`,
           type: 'step',
           position,
           data: { label: stepLabel(typeKey), type_key: typeKey, status: null, config: {} },
@@ -215,8 +234,24 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
   }
 
   async function handleRun() {
+    const required = extractRunParams(workflow?.definition ?? {})
+    if (required.length > 0) {
+      setPendingParams(required)
+      setParamsDialogOpen(true)
+      return
+    }
     try {
       const run = await createRun.mutateAsync({ workflowId })
+      navigate(`/runs/${run.id}`)
+    } catch {
+      // Surfaced by the global mutation error handler (toast).
+    }
+  }
+
+  async function handleRunWithParams(values: Record<string, string>) {
+    try {
+      const run = await createRun.mutateAsync({ workflowId, params: values })
+      setParamsDialogOpen(false)
       navigate(`/runs/${run.id}`)
     } catch {
       // Surfaced by the global mutation error handler (toast).
@@ -243,8 +278,22 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
         </Button>
       </div>
 
+      <div className="absolute left-4 top-4 z-10 max-w-xs">
+        <input
+          className="w-full bg-transparent text-sm font-semibold text-text-primary outline-none border-b border-transparent hover:border-border focus:border-iris transition-colors"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          onBlur={handleNameSave}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') { setNameValue(workflow?.name ?? ''); e.currentTarget.blur() }
+          }}
+          aria-label="Workflow name"
+        />
+      </div>
+
       {nodes.length > 0 && (
-        <div className="absolute left-4 top-4 z-10 max-w-sm">
+        <div className="absolute left-4 top-12 z-10 max-w-sm">
           {issues.length === 0 ? (
             <div className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-success shadow-sm">
               Valid DAG · {nodes.length} step{nodes.length === 1 ? '' : 's'}
@@ -298,6 +347,7 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
         nodeTypes={nodeTypes}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        connectionMode={ConnectionMode.Loose}
         defaultEdgeOptions={EDGE_OPTIONS}
         proOptions={{ hideAttribution: true }}
         fitView
@@ -373,6 +423,15 @@ function FlowCanvas({ workflowId }: { workflowId: string }) {
           </div>
         )}
       </Drawer>
+
+      <RunParamsDialog
+        params={pendingParams}
+        open={paramsDialogOpen}
+        onConfirm={handleRunWithParams}
+        onCancel={() => setParamsDialogOpen(false)}
+        loading={createRun.isPending}
+        projectId={workflow?.project_id}
+      />
     </div>
   )
 }

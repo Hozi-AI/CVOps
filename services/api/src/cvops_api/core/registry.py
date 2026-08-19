@@ -38,6 +38,32 @@ class Registry:
         )
         self._store[step.type_key] = reg
 
+    def register_type(
+        self,
+        type_key: str,
+        category: str,
+        json_schema: dict[str, Any],
+        ui_hints: dict[str, Any] | None = None,
+    ) -> None:
+        """Register a non-step type (annotation_type, source_type, etc.)."""
+        from cvops_api.engine.step import Step  # noqa: PLC0415
+
+        class _Placeholder(Step):
+            async def run(self, ctx, config, inputs):  # pragma: no cover
+                raise NotImplementedError
+
+        placeholder = _Placeholder()
+        placeholder.type_key = type_key
+        placeholder.config_schema = json_schema
+        reg = StepRegistration(
+            type_key=type_key,
+            category=category,
+            json_schema=json_schema,
+            ui_hints=ui_hints or {},
+            impl=placeholder,
+        )
+        self._store[type_key] = reg
+
     def resolve(self, type_key: str) -> StepRegistration:
         if type_key not in self._store:
             raise KeyError(f"Unknown type_key: {type_key!r}")

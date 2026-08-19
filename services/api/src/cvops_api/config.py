@@ -1,5 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Known placeholder values that must never be used in production.
+_INSECURE_DEFAULTS: frozenset[str] = frozenset({
+    "change-me-in-production-min-32-chars",
+    "change-me-worker-token",
+    "GKchangeme",
+    "changeme",
+})
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -43,6 +51,36 @@ class Settings(BaseSettings):
 
     # Model Deployer
     MODEL_DEPLOYER_URL: str = "http://model-deployer:8001"
+
+    # Set to true only for local development when real secrets are not yet configured.
+    ALLOW_INSECURE_DEFAULTS: bool = False
+
+
+def validate_secrets(s: Settings) -> None:
+    """Raise at server startup if critical secrets are still set to known placeholders.
+
+    Called from the FastAPI lifespan, not at import time, so the test suite can
+    import Settings freely without needing real secrets in the test environment.
+    Bypass with ALLOW_INSECURE_DEFAULTS=true for local development only.
+    """
+    if s.ALLOW_INSECURE_DEFAULTS:
+        return
+    flagged = [
+        name
+        for name, value in (
+            ("JWT_SECRET", s.JWT_SECRET),
+            ("WORKER_TOKEN", s.WORKER_TOKEN),
+            ("S3_ACCESS_KEY", s.S3_ACCESS_KEY),
+            ("S3_SECRET_KEY", s.S3_SECRET_KEY),
+        )
+        if value in _INSECURE_DEFAULTS or value.lower().startswith("change")
+    ]
+    if flagged:
+        raise RuntimeError(
+            f"Refusing to start with placeholder secrets: {', '.join(flagged)}. "
+            "Set real values in your .env file. "
+            "For local dev only, set ALLOW_INSECURE_DEFAULTS=true."
+        )
 
 
 settings = Settings()

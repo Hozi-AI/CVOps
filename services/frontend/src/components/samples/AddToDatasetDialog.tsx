@@ -24,6 +24,10 @@ export function AddToDatasetDialog({
   const [datasetId, setDatasetId] = useState('')
   const [newName, setNewName] = useState('')
   const [branch, setBranch] = useState('main')
+  const [message, setMessage] = useState('')
+  const [trainPct, setTrainPct] = useState(70)
+  const [valPct, setValPct] = useState(15)
+  const testPct = Math.max(0, 100 - trainPct - valPct)
 
   const busy = createDataset.isPending || commit.isPending
 
@@ -40,7 +44,8 @@ export function AddToDatasetDialog({
         datasetId: dsId,
         sample_ids: sampleIds,
         branch_name: branch || 'main',
-        message: `Add ${sampleIds.length} samples`,
+        message: message.trim() || `Add ${sampleIds.length} samples`,
+        split_strategy: { train_ratio: trainPct / 100, val_ratio: valPct / 100 },
       })
       toast.success(
         'Added to dataset',
@@ -87,6 +92,28 @@ export function AddToDatasetDialog({
         <Field label="Branch" htmlFor="ds-branch">
           <Input id="ds-branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
         </Field>
+
+        <Field label="Commit message (optional)" htmlFor="ds-message">
+          <Input id="ds-message" value={message} onChange={(e) => setMessage(e.target.value)}
+            placeholder={`Add ${sampleIds.length} samples`} />
+        </Field>
+
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-medium text-text-secondary mb-1">Split</legend>
+          <div className="flex gap-3">
+            <Field label={`Train ${trainPct}%`} htmlFor="train-pct" className="flex-1">
+              <Input id="train-pct" type="number" min={0} max={100} value={trainPct}
+                onChange={(e) => setTrainPct(Number(e.target.value))} />
+            </Field>
+            <Field label={`Val ${valPct}%`} htmlFor="val-pct" className="flex-1">
+              <Input id="val-pct" type="number" min={0} max={100} value={valPct}
+                onChange={(e) => setValPct(Number(e.target.value))} />
+            </Field>
+            <Field label={`Test ${testPct}%`} htmlFor="test-pct" className="flex-1">
+              <Input id="test-pct" type="number" value={testPct} readOnly className="opacity-50" />
+            </Field>
+          </div>
+        </fieldset>
 
         <p className="text-xs text-text-muted">
           Only annotated samples are committed; unannotated ones are skipped and reported.

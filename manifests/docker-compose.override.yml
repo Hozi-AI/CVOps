@@ -422,10 +422,7 @@ services:
       options:
         max-size: 100m
         max-file: "3"
-    # Auto-label serving layer — not needed for the human-review (View in CVAT)
-    # flow, and first start bootstraps a YOLO image. Profile-gated so the Tilt
-    # inner loop skips it; start_env.sh (--profile app) still brings it up.
-    profiles: ["app", "all"]
+    # Auto-label serving layer required for YOLO model deployment to CVAT.
 
   worker-cvat:
     # CVAT-queue worker: runs step.human_review (push gate) and, on a CVAT
@@ -457,6 +454,7 @@ services:
       CVAT_PUBLIC_URL:     ${CVAT_PUBLIC_URL:-http://localhost:8080}
       CVAT_USERNAME:       ${CVAT_USERNAME:-admin}
       CVAT_PASSWORD:       ${CVAT_PASSWORD:-Admin1234!}
+      YOLO_BASE_IMAGE:     ${YOLO_BASE_IMAGE:-cvops/yolo-nuclio-base:latest}
       CVAT_WEBHOOK_SECRET: ${CVAT_WEBHOOK_SECRET}
       # CVAT posts review-completion webhooks back to the API at this URL.
       CVAT_WEBHOOK_TARGET: http://api:8000/api/v1/internal/cvat/webhook

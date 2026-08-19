@@ -1,10 +1,11 @@
 """
 D3 — Ontology and LabelClass models.
 
-An Ontology belongs to a Project and defines the controlled vocabulary of
-label classes used across that project's datasets and annotations.
+An Ontology belongs to an Org and defines the controlled vocabulary of
+label classes. A single ontology can be the default for multiple projects
+in the same org.
 
-A LabelClass is a single entry in that vocabulary.  The sort_order column
+A LabelClass is a single entry in that vocabulary. The sort_order column
 doubles as the YOLO class_id at export time and must therefore never be
 reused or reordered once a class has been used in an annotation.
 """
@@ -20,8 +21,8 @@ from cvops_api.db.base import Base, EntityBase
 class Ontology(Base, EntityBase):
     __tablename__ = "ontologies"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("projects.id"),
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("orgs.id"),
         nullable=False,
         index=True,
     )
@@ -33,11 +34,11 @@ class Ontology(Base, EntityBase):
         server_default="1",
     )
 
-    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_ontologies_project_name"),)
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_ontologies_org_name"),)
 
     def __repr__(self) -> str:
         return (
-            f"<Ontology id={self.id!r} project_id={self.project_id!r} "
+            f"<Ontology id={self.id!r} org_id={self.org_id!r} "
             f"name={self.name!r} version={self.version!r}>"
         )
 

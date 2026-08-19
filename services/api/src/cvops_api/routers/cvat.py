@@ -3,8 +3,7 @@ from __future__ import annotations
 import uuid
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,18 +42,21 @@ async def cvat_deploy_model(
 
     presigned_url = await get_storage().get_presigned_get(mv.blob_hash)
 
-    async with httpx.AsyncClient(timeout=30) as http:
-        weights_resp = await http.get(presigned_url)
-        if weights_resp.status_code != 200:
-            raise HTTPException(502, "Could not fetch model weights from storage")
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            weights_resp = await http.get(presigned_url)
+            if weights_resp.status_code != 200:
+                raise HTTPException(502, "Could not fetch model weights from storage")
 
-        deploy_resp = await http.post(
-            f"{DEPLOYER_URL}/deploy",
-            headers=_DEPLOYER_HEADERS,
-            data={"model_name": model_name},
-            files={"file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")},
-            timeout=300,
-        )
+            deploy_resp = await http.post(
+                f"{DEPLOYER_URL}/deploy",
+                headers=_DEPLOYER_HEADERS,
+                data={"model_name": model_name},
+                files={"file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")},
+                timeout=300,
+            )
+    except httpx.ConnectError:
+        raise HTTPException(503, "CVAT deployer is not available")
 
     if deploy_resp.status_code != 200:
         raise HTTPException(502, f"Deployer error: {deploy_resp.text}")
@@ -69,8 +71,11 @@ async def list_cvat_models(
     current_user: User = Depends(get_current_user),
 ) -> list[dict]:
     """Return all models currently deployed in CVAT."""
-    async with httpx.AsyncClient(timeout=10) as http:
-        resp = await http.get(f"{DEPLOYER_URL}/models", headers=_DEPLOYER_HEADERS)
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            resp = await http.get(f"{DEPLOYER_URL}/models", headers=_DEPLOYER_HEADERS)
+    except httpx.ConnectError:
+        return []
     if resp.status_code != 200:
         raise HTTPException(502, f"Deployer error: {resp.text}")
     return resp.json()
@@ -86,13 +91,16 @@ async def cvat_deploy_file(
 ) -> dict:
     """Accept a .pt upload and forward it to the CVAT worker for deployment."""
     contents = await file.read()
-    async with httpx.AsyncClient(timeout=300) as http:
-        resp = await http.post(
-            f"{DEPLOYER_URL}/deploy",
-            headers=_DEPLOYER_HEADERS,
-            data={"model_name": model_name},
-            files={"file": (file.filename or "model.pt", contents, "application/octet-stream")},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=300) as http:
+            resp = await http.post(
+                f"{DEPLOYER_URL}/deploy",
+                headers=_DEPLOYER_HEADERS,
+                data={"model_name": model_name},
+                files={"file": (file.filename or "model.pt", contents, "application/octet-stream")},
+            )
+    except httpx.ConnectError:
+        raise HTTPException(503, "CVAT deployer is not available")
     if resp.status_code != 200:
         raise HTTPException(502, f"Deploy error: {resp.text}")
     return resp.json()
@@ -106,8 +114,11 @@ async def cvat_delete_model(
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Remove a Nuclio function from CVAT."""
-    async with httpx.AsyncClient(timeout=30) as http:
-        resp = await http.delete(f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS)
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.delete(f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS)
+    except httpx.ConnectError:
+        raise HTTPException(503, "CVAT deployer is not available")
     if resp.status_code != 200:
         raise HTTPException(502, f"Delete error: {resp.text}")
     return resp.json()
@@ -115,37 +126,36 @@ async def cvat_delete_model(
 
 # ── Trigger auto-annotation ───────────────────────────────────────────────────
 
-class AnnotateRequest(BaseModel):
-    task_name: str
-    function_id: str
-    threshold: float = 0.3
-
-
 @router.post("/projects/{project_id}/cvat-annotate")
 async def cvat_annotate(
     project_id: uuid.UUID,
-    body: AnnotateRequest,
+    task_name: str = Form(...),
+    function_id: str = Form(...),
+    threshold: float = Form(0.3),
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Upload images and trigger auto-annotation in CVAT with the selected model."""
     form_data = {
-        "task_name": body.task_name,
-        "function_id": body.function_id,
-        "threshold": str(body.threshold),
+        "task_name": task_name,
+        "function_id": function_id,
+        "threshold": str(threshold),
     }
     upload_files = [
         ("files", (f.filename, await f.read(), f.content_type or "image/jpeg"))
         for f in files
     ]
 
-    async with httpx.AsyncClient(timeout=600) as http:
-        resp = await http.post(
-            f"{DEPLOYER_URL}/annotate",
-            headers=_DEPLOYER_HEADERS,
-            data=form_data,
-            files=upload_files,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=600) as http:
+            resp = await http.post(
+                f"{DEPLOYER_URL}/annotate",
+                headers=_DEPLOYER_HEADERS,
+                data=form_data,
+                files=upload_files,
+            )
+    except httpx.ConnectError:
+        raise HTTPException(503, "CVAT deployer is not available")
 
     if resp.status_code != 200:
         raise HTTPException(502, f"Deployer error: {resp.text}")

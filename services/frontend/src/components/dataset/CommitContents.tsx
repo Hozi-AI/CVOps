@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useCommitDiff, useCommitSamples, type Commit } from '../../api/datasets'
+import { useCommitDiff, useCommitFromSamples, useCommitSamples, useDownloadCommit, type Commit } from '../../api/datasets'
 import { useDataSources } from '../../api/data-sources'
 import { useThumbnailUrl, type Sample } from '../../api/samples'
 import { cn } from '../../lib/cn'
@@ -212,10 +212,34 @@ export function CommitContents({
 }) {
   const q = useCommitSamples(datasetId, commitId)
   const { data: sources } = useDataSources(projectId)
+  const dl = useDownloadCommit(datasetId, commitId)
+  const resplit = useCommitFromSamples()
   const [view, setView] = useState<ViewKey>('files')
   const [groupBy, setGroupBy] = useState<GroupKey>('source')
   const [openIndex, setOpenIndex] = useState<number | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [showResplit, setShowResplit] = useState(false)
+  const [trainRatio, setTrainRatio] = useState(0.8)
+  const [valRatio, setValRatio] = useState(0.2)
+
+  // Auto-load remaining pages when re-split panel is open so we have all IDs.
+  useEffect(() => {
+    if (showResplit && q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage()
+  }, [showResplit, q])
+
+  async function handleResplit() {
+    const sampleIds = samples.map((s) => s.id)
+    await resplit.mutateAsync({
+      datasetId,
+      sample_ids: sampleIds,
+      split_strategy: { train_ratio: trainRatio, val_ratio: valRatio },
+      message: `re-split: train ${Math.round(trainRatio * 100)}% val ${Math.round(valRatio * 100)}%`,
+    })
+    setShowResplit(false)
+  }
+
+  const effectiveValMax = Math.min(0.5, Math.max(0.05, +(1 - trainRatio).toFixed(2)))
+  const testPct = Math.max(0, Math.round((1 - trainRatio - valRatio) * 100))
 
   const samples = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data])
 
@@ -283,12 +307,55 @@ export function CommitContents({
             {commit && ` · ${new Date(commit.created_at).toLocaleString()}`}
           </p>
         </div>
-        <Link to={`/datasets/${datasetId}/commits/${commitId}`} className="shrink-0">
-          <Button size="sm" variant="secondary">
-            Open detail
+        <div className="flex shrink-0 gap-2">
+          <Button size="sm" variant="secondary" loading={dl.busy} onClick={dl.trigger}>
+            {dl.label}
           </Button>
-        </Link>
+          <Button size="sm" variant="secondary" onClick={() => setShowResplit((v) => !v)}>
+            Re-split
+          </Button>
+          <Link to={`/datasets/${datasetId}/commits/${commitId}`}>
+            <Button size="sm" variant="secondary">Open detail</Button>
+          </Link>
+        </div>
       </div>
+
+      {showResplit && (
+        <div className="mb-4 rounded-xl border border-border bg-surface-2 p-4 space-y-3">
+          <p className="text-sm font-medium text-text-primary">Re-assign splits for this commit</p>
+          <div className="space-y-2">
+            <label className="flex items-center justify-between text-xs text-text-secondary">
+              <span>Train</span><span className="tabular-nums">{Math.round(trainRatio * 100)}%</span>
+            </label>
+            <input type="range" min={0.1} max={0.9} step={0.05} value={trainRatio}
+              onChange={(e) => {
+                const t = Number(e.target.value)
+                setTrainRatio(t)
+                if (valRatio > 1 - t) setValRatio(Math.max(0.05, +(1 - t).toFixed(2)))
+              }}
+              className="w-full accent-iris" />
+            <label className="flex items-center justify-between text-xs text-text-secondary">
+              <span>Val</span><span className="tabular-nums">{Math.round(valRatio * 100)}%</span>
+            </label>
+            <input type="range" min={0.05} max={effectiveValMax} step={0.05} value={Math.min(valRatio, effectiveValMax)}
+              onChange={(e) => setValRatio(Number(e.target.value))}
+              className="w-full accent-iris" />
+            <p className="text-xs text-text-muted">
+              train {Math.round(trainRatio * 100)}% · val {Math.round(valRatio * 100)}% · test {testPct}%
+            </p>
+          </div>
+          {(q.hasNextPage || q.isFetchingNextPage) && (
+            <p className="text-xs text-text-muted">Loading all samples…</p>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleResplit}
+              loading={resplit.isPending || q.isFetchingNextPage || q.hasNextPage}>
+              Apply
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setShowResplit(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
 
       {/* View toggle — full dataset state ("Files") vs. diff against parent ("Changes"). */}
       <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-2 p-0.5" role="tablist" aria-label="Commit view">

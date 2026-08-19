@@ -11,7 +11,7 @@
  * `$run.params.<key>` (how the dispatcher seeds the entry step).
  */
 
-export type FieldWidget = 'text' | 'number' | 'range' | 'select' | 'textarea' | 'tags' | 'keyvalue'
+export type FieldWidget = 'text' | 'number' | 'range' | 'select' | 'textarea' | 'tags' | 'keyvalue' | 'ontology-picker'
 
 export interface FieldSpec {
   key: string
@@ -71,7 +71,7 @@ export const STEP_META: Record<string, StepMeta> = {
     runnable: false,
     color: '#FBBF24',
     inputs: ['sample_ids', 'annotation_revision_ids'],
-    outputs: [],
+    outputs: ['annotation_revision_ids'],
     runParamInputs: ['sample_ids', 'annotation_revision_ids'],
     fields: [
       { key: 'labeling_backend', label: 'Labeling backend', widget: 'select', options: [{ value: 'cvat', label: 'CVAT' }] },
@@ -86,7 +86,7 @@ export const STEP_META: Record<string, StepMeta> = {
     color: '#34D399',
     inputs: ['sample_ids', 'annotation_revision_ids'],
     outputs: ['commit_id', 'ref_id', 'dataset_id'],
-    runParamInputs: ['sample_ids', 'annotation_revision_ids'],
+    runParamInputs: ['sample_ids'],
     fields: [
       { key: 'dataset_name', label: 'Dataset name', help: 'Target dataset to commit into.', widget: 'text', placeholder: 'my-dataset' },
       { key: 'branch_name', label: 'Branch', widget: 'text', placeholder: 'main' },
@@ -97,7 +97,7 @@ export const STEP_META: Record<string, StepMeta> = {
       { key: 'train_ratio', label: 'Train ratio', widget: 'range', min: 0.1, max: 0.9, step: 0.05 },
       { key: 'val_ratio', label: 'Val ratio', widget: 'range', min: 0.05, max: 0.5, step: 0.05 },
       { key: 'seed', label: 'Seed', widget: 'number', min: 0, placeholder: '42' },
-      { key: 'ontology_id', label: 'Ontology ID', widget: 'text', placeholder: 'uuid' },
+      { key: 'ontology_id', label: 'Ontology', widget: 'ontology-picker' },
       { key: 'message', label: 'Commit message', widget: 'textarea', placeholder: 'Describe this commit…' },
     ],
   },
@@ -110,7 +110,7 @@ export const STEP_META: Record<string, StepMeta> = {
     outputs: ['export_blob_hash', 'commit_id'],
     runParamInputs: ['commit_id'],
     fields: [
-      { key: 'ontology_id', label: 'Ontology override', help: 'Optional — defaults to the commit ontology.', widget: 'text', placeholder: 'uuid' },
+      { key: 'ontology_id', label: 'Ontology override', help: 'Optional — defaults to the commit ontology.', widget: 'ontology-picker' },
     ],
   },
   'step.train': {
@@ -208,6 +208,20 @@ export function resolveInputs(
     }
   }
   return resolved
+}
+
+/** Extract unique $run.params.<name> references from a saved workflow definition. */
+export function extractRunParams(definition: Record<string, unknown>): string[] {
+  const steps = (definition.steps ?? []) as Array<{ inputs?: Record<string, string> }>
+  const seen = new Set<string>()
+  const RE = /^\$run\.params\.(.+)$/
+  for (const step of steps) {
+    for (const ref of Object.values(step.inputs ?? {})) {
+      const m = RE.exec(ref)
+      if (m) seen.add(m[1])
+    }
+  }
+  return [...seen]
 }
 
 /** The `inputs` object persisted onto a step in the workflow definition. */

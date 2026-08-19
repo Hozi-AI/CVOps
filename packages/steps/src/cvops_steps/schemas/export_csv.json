@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Export CSV Config",
+  "type": "object",
+  "properties": {
+    "include_unannotated": {
+      "type": "boolean", "default": false,
+      "description": "Include samples that have no annotation revision"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

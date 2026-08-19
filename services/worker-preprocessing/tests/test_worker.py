@@ -206,6 +206,145 @@ async def test_consume_loop_acks_even_when_handler_raises(fake_redis, monkeypatc
     assert pending["pending"] == 0
 
 
+# ── retry / DLQ ─────────────────────────────────────────────────────────────
+
+
+async def test_poison_pill_goes_to_dlq(fake_redis, monkeypatch):
+    """A message missing job_id is sent to the DLQ without ever calling _claim_and_run."""
+    monkeypatch.setattr(worker, "BLOCK_MS", 50)
+    claim_called = False
+
+    async def _claim(job_id: str) -> None:
+        nonlocal claim_called
+        claim_called = True
+
+    monkeypatch.setattr(worker, "_claim_and_run", _claim)
+
+    await worker._ensure_group()
+    await fake_redis.xadd(worker.STREAM, {"step_type": "step.x"})  # no job_id
+
+    stop = asyncio.Event()
+    sem = asyncio.Semaphore(worker.CONCURRENCY)
+    task = asyncio.create_task(worker._consume_loop(stop, sem))
+
+    for _ in range(100):
+        dlq_msgs = await fake_redis.xrange(worker.DLQ_STREAM)
+        if dlq_msgs:
+            break
+        await asyncio.sleep(0.02)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert not claim_called
+    dlq_msgs = await fake_redis.xrange(worker.DLQ_STREAM)
+    assert len(dlq_msgs) == 1
+    assert dlq_msgs[0][1]["dlq_reason"] == "missing job_id"
+
+
+async def test_transient_failure_requeues_with_retry_counter(fake_redis, monkeypatch):
+    """A failing job is re-enqueued and its retry counter incremented."""
+    monkeypatch.setattr(worker, "BLOCK_MS", 50)
+    monkeypatch.setattr(worker, "MAX_RETRIES", 3)
+    monkeypatch.setattr(worker, "_RETRY_DELAYS", (0.0, 0.0, 0.0))
+
+    async def _claim(job_id: str) -> None:
+        raise RuntimeError("transient error")
+
+    monkeypatch.setattr(worker, "_claim_and_run", _claim)
+
+    await worker._ensure_group()
+    job_id = str(uuid.uuid4())
+    await fake_redis.xadd(worker.STREAM, {"job_id": job_id, "step_type": "step.x"})
+
+    stop = asyncio.Event()
+    sem = asyncio.Semaphore(worker.CONCURRENCY)
+    task = asyncio.create_task(worker._consume_loop(stop, sem))
+
+    # Wait for the retry counter to be set.
+    retry_key = f"{worker._RETRY_KEY_PREFIX}{job_id}"
+    for _ in range(100):
+        val = await fake_redis.get(retry_key)
+        if val is not None:
+            break
+        await asyncio.sleep(0.02)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert int(await fake_redis.get(retry_key) or 0) >= 1
+    # Original message was acked; a new one was re-enqueued.
+    pending = await fake_redis.xpending(worker.STREAM, worker.GROUP)
+    assert pending["pending"] == 0
+
+
+async def test_max_retries_exceeded_sends_to_dlq(fake_redis, monkeypatch):
+    """After MAX_RETRIES failures the job lands in the DLQ, not re-enqueued."""
+    monkeypatch.setattr(worker, "BLOCK_MS", 50)
+    monkeypatch.setattr(worker, "MAX_RETRIES", 2)
+    monkeypatch.setattr(worker, "_RETRY_DELAYS", (0.0, 0.0))
+
+    async def _claim(job_id: str) -> None:
+        raise RuntimeError("always fails")
+
+    monkeypatch.setattr(worker, "_claim_and_run", _claim)
+
+    await worker._ensure_group()
+    job_id = str(uuid.uuid4())
+    # Pre-seed the counter so this attempt is already at the limit.
+    retry_key = f"{worker._RETRY_KEY_PREFIX}{job_id}"
+    await fake_redis.set(retry_key, worker.MAX_RETRIES)
+
+    await fake_redis.xadd(worker.STREAM, {"job_id": job_id, "step_type": "step.x"})
+
+    stop = asyncio.Event()
+    sem = asyncio.Semaphore(worker.CONCURRENCY)
+    task = asyncio.create_task(worker._consume_loop(stop, sem))
+
+    for _ in range(100):
+        dlq_msgs = await fake_redis.xrange(worker.DLQ_STREAM)
+        if dlq_msgs:
+            break
+        await asyncio.sleep(0.02)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    dlq_msgs = await fake_redis.xrange(worker.DLQ_STREAM)
+    assert len(dlq_msgs) == 1
+    assert dlq_msgs[0][1]["job_id"] == job_id
+    # Retry key was cleaned up.
+    assert await fake_redis.get(retry_key) is None
+
+
+async def test_success_clears_retry_counter(fake_redis, monkeypatch):
+    """A successful run deletes the retry key so future transient failures start fresh."""
+    monkeypatch.setattr(worker, "BLOCK_MS", 50)
+
+    async def _claim(job_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(worker, "_claim_and_run", _claim)
+
+    await worker._ensure_group()
+    job_id = str(uuid.uuid4())
+    retry_key = f"{worker._RETRY_KEY_PREFIX}{job_id}"
+    await fake_redis.set(retry_key, "2")  # simulate two prior failures
+
+    await fake_redis.xadd(worker.STREAM, {"job_id": job_id, "step_type": "step.x"})
+
+    stop = asyncio.Event()
+    sem = asyncio.Semaphore(worker.CONCURRENCY)
+    task = asyncio.create_task(worker._consume_loop(stop, sem))
+
+    for _ in range(100):
+        pending = await fake_redis.xpending(worker.STREAM, worker.GROUP)
+        if pending["pending"] == 0 and await _delivered(fake_redis):
+            break
+        await asyncio.sleep(0.02)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert await fake_redis.get(retry_key) is None
+
+
 async def _delivered(fake_redis) -> bool:
     info = await fake_redis.xinfo_groups(worker.STREAM)
     return any(g["name"] == worker.GROUP and g["last-delivered-id"] != "0-0" for g in info)

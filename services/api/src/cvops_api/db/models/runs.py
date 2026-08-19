@@ -66,8 +66,12 @@ class Event(Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    org_id: Mapped[Optional[uuid.UUID]] = mapped_column(nullable=True, index=False)
 
-    __table_args__ = (Index("ix_events_entity", "entity_type", "entity_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_events_entity", "entity_type", "entity_id", "created_at"),
+        Index("ix_events_org_id_created_at", "org_id", "created_at"),
+    )
 
     def __repr__(self) -> str:
         return (

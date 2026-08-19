@@ -35,14 +35,27 @@ from cvops_api.engine.coordinator import (
 # Worker-specific config (not part of the API's settings surface).
 STREAM = os.getenv("REDIS_STREAM", "preprocessing")
 CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", "4"))
+MAX_RETRIES = int(os.getenv("WORKER_MAX_RETRIES", "3"))
 ORPHAN_INTERVAL_SECONDS = 60
 ORPHAN_MIN_AGE_SECONDS = 30
 BLOCK_MS = 5000
+
+DLQ_STREAM = f"{STREAM}:dlq"
+_RETRY_DELAYS: tuple[float, ...] = (1.0, 5.0, 30.0)
+_RETRY_KEY_PREFIX = "worker:retry:"
+_RETRY_KEY_TTL = 3600  # expire stale counters after 1 hour
 
 GROUP = f"worker-{STREAM}"
 CONSUMER = f"worker-{socket.gethostname()}-{os.getpid()}"
 # Steps with no explicit actor (worker-driven) are attributed to this system id.
 SYSTEM_ACTOR_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+
+async def _send_to_dlq(
+    redis: object, msg_id: str, fields: dict[str, str], reason: str
+) -> None:
+    await redis.xadd(DLQ_STREAM, {**fields, "original_msg_id": msg_id, "dlq_reason": reason})  # type: ignore[union-attr]
+    print(f"[worker] DLQ ← msg_id={msg_id} reason={reason!r}", flush=True)
 
 
 def _my_step_types() -> set[str]:
@@ -81,13 +94,43 @@ async def _consume_loop(stop: asyncio.Event, sem: asyncio.Semaphore) -> None:
     inflight: set[asyncio.Task[None]] = set()
 
     async def _handle(msg_id: str, fields: dict[str, str]) -> None:
+        job_id = fields.get("job_id")
+        requeue_delay: float = 0.0
+        requeue_fields: dict[str, str] | None = None
+
         try:
-            await _claim_and_run(fields["job_id"])
+            if job_id is None:
+                # Poison-pill: structurally invalid message → DLQ immediately.
+                await _send_to_dlq(redis, msg_id, fields, "missing job_id")
+            else:
+                retry_key = f"{_RETRY_KEY_PREFIX}{job_id}"
+                try:
+                    await _claim_and_run(job_id)
+                    await redis.delete(retry_key)
+                except Exception as exc:  # noqa: BLE001
+                    attempt = int(await redis.incr(retry_key))
+                    await redis.expire(retry_key, _RETRY_KEY_TTL)
+                    if attempt <= MAX_RETRIES:
+                        requeue_delay = _RETRY_DELAYS[min(attempt - 1, len(_RETRY_DELAYS) - 1)]
+                        requeue_fields = dict(fields)
+                        print(
+                            f"[worker] retry {attempt}/{MAX_RETRIES} job_id={job_id}"
+                            f" in {requeue_delay:.0f}s: {exc}",
+                            flush=True,
+                        )
+                    else:
+                        await _send_to_dlq(redis, msg_id, fields, str(exc))
+                        await redis.delete(retry_key)
         finally:
-            # Always ack: failures are recorded in PG and retried by the user
-            # from the dashboard; we never requeue automatically.
             await redis.xack(STREAM, GROUP, msg_id)
             sem.release()
+
+        # Re-enqueue after releasing the semaphore so the backoff sleep
+        # does not hold a concurrency slot.
+        if requeue_fields is not None:
+            if requeue_delay:
+                await asyncio.sleep(requeue_delay)
+            await redis.xadd(STREAM, requeue_fields)
 
     while not stop.is_set():
         try:

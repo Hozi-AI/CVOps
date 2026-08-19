@@ -53,8 +53,9 @@ class Sample(Base, EntityBase):
     source_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("data_sources.id"), nullable=False, index=True
     )
-    width: Mapped[int] = mapped_column(Integer, nullable=False)
-    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    modality: Mapped[str] = mapped_column(Text, nullable=False, default="image", server_default="image")
     frame_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     perceptual_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     thumbnail_hash: Mapped[Optional[str]] = mapped_column(ForeignKey("blobs.hash"), nullable=True)

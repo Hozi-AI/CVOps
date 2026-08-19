@@ -31,6 +31,7 @@ from cvops_api.core.audit import emit_event
 from cvops_api.core.redis_client import get_redis
 from cvops_api.core.registry import registry
 from cvops_api.core.storage import get_storage
+from cvops_api.db.models.projects import Project
 from cvops_api.db.models.runs import Run
 from cvops_api.db.models.workflows import Workflow
 from cvops_api.engine.ref_resolver import resolve_refs, ResolutionError
@@ -116,12 +117,15 @@ async def advance_workflow(
         await session.commit()
         return
 
+    proj = await session.get(Project, parent.project_id)
+    org_id = proj.org_id if proj else None
+
     # Ad-hoc runs (no saved Workflow) carry their DAG inline on the parent's
     # config; saved workflow runs load it from the Workflow row.
     if parent.workflow_id is None:
         definition = (parent.config or {}).get("definition") or {}
         if not definition:
-            await _fail(session, parent, actor_id, "Ad-hoc run has no definition")
+            await _fail(session, parent, actor_id, "Ad-hoc run has no definition", org_id=org_id)
             await session.commit()
             return
     else:
@@ -130,7 +134,7 @@ async def advance_workflow(
         )
         workflow = wf_result.scalar_one_or_none()
         if workflow is None:
-            await _fail(session, parent, actor_id, "Workflow definition not found")
+            await _fail(session, parent, actor_id, "Workflow definition not found", org_id=org_id)
             await session.commit()
             return
         definition = workflow.definition or {}
@@ -142,7 +146,7 @@ async def advance_workflow(
     # 2. Topological order (also rejects cycles).
     ordered = _topo_sort(list(steps_by_id.keys()), edges)
     if ordered is None:
-        await _fail(session, parent, actor_id, "Workflow has a cycle")
+        await _fail(session, parent, actor_id, "Workflow has a cycle", org_id=org_id)
         await session.commit()
         return
 
@@ -195,7 +199,7 @@ async def advance_workflow(
         try:
             registry.validate_config(type_key, config)
         except Exception as exc:  # noqa: BLE001
-            await _fail(session, parent, actor_id, f"Step '{step_id}' config invalid: {exc}")
+            await _fail(session, parent, actor_id, f"Step '{step_id}' config invalid: {exc}", org_id=org_id)
             await session.commit()
             return
 
@@ -203,7 +207,7 @@ async def advance_workflow(
         try:
             reg = registry.resolve(type_key)
         except KeyError:
-            await _fail(session, parent, actor_id, f"Unknown step type: {type_key!r}")
+            await _fail(session, parent, actor_id, f"Unknown step type: {type_key!r}", org_id=org_id)
             await session.commit()
             return
         step_impl = reg.impl
@@ -220,7 +224,7 @@ async def advance_workflow(
                 # receives source_id etc. instead of KeyError-ing on empty inputs.
                 resolved = dict(run_params)
         except ResolutionError as exc:
-            await _fail(session, parent, actor_id, f"Step '{step_id}' input resolution: {exc}")
+            await _fail(session, parent, actor_id, f"Step '{step_id}' input resolution: {exc}", org_id=org_id)
             await session.commit()
             return
 
@@ -268,6 +272,7 @@ async def advance_workflow(
                 entity_type="run",
                 entity_id=child.id,
                 action="run.succeeded",
+                org_id=org_id,
             )
             continue
 
@@ -301,6 +306,7 @@ async def advance_workflow(
             entity_type="run",
             entity_id=parent_run_id,
             action="run.succeeded",
+            org_id=org_id,
         )
 
     # Durable first, doorbell second: commit (releasing the parent lock) so the
@@ -325,6 +331,9 @@ async def process_step(
     if child is None or child.status != "pending":
         return  # already taken / gone
 
+    proj = await session.get(Project, child.project_id)
+    org_id = proj.org_id if proj else None
+
     parent_run_id = child.parent_run_id
     type_key = child.step_type or ""
     config = child.config or {}
@@ -340,7 +349,7 @@ async def process_step(
         reg = registry.resolve(type_key)
     except KeyError:
         if parent is not None:
-            await _fail_child(session, child, parent, actor_id, f"Unknown step type: {type_key!r}")
+            await _fail_child(session, child, parent, actor_id, f"Unknown step type: {type_key!r}", org_id=org_id)
         else:
             child.status = "failed"
             child.error = f"Unknown step type: {type_key!r}"
@@ -360,6 +369,7 @@ async def process_step(
         entity_type="run",
         entity_id=child.id,
         action="run.started",
+        org_id=org_id,
     )
     await session.commit()
 
@@ -386,6 +396,7 @@ async def process_step(
             entity_type="run",
             entity_id=child.id,
             action="run.waiting",
+            org_id=org_id,
         )
         await session.commit()
         return  # gate has no advance; resume comes via the gate-resolve endpoint
@@ -400,7 +411,7 @@ async def process_step(
             pr2 = await session.execute(select(Run).where(Run.id == parent_run_id))
             p2 = pr2.scalar_one_or_none()
         if p2 is not None:
-            await _fail_child(session, c2, p2, actor_id, str(exc))
+            await _fail_child(session, c2, p2, actor_id, str(exc), org_id=org_id)
         else:
             c2.status = "failed"
             c2.error = str(exc)
@@ -420,6 +431,7 @@ async def process_step(
         entity_type="run",
         entity_id=child.id,
         action="run.succeeded",
+        org_id=org_id,
     )
     await session.commit()
 
@@ -474,7 +486,13 @@ def _topo_sort(step_ids: list[str], edges: list[object]) -> list[str] | None:
     return result if len(result) == len(step_ids) else None
 
 
-async def _fail(session: AsyncSession, run: Run, actor_id: uuid.UUID, error: str) -> None:
+async def _fail(
+    session: AsyncSession,
+    run: Run,
+    actor_id: uuid.UUID,
+    error: str,
+    org_id: uuid.UUID | None = None,
+) -> None:
     run.status = "failed"
     run.error = error
     run.finished_at = datetime.now(UTC)
@@ -487,6 +505,7 @@ async def _fail(session: AsyncSession, run: Run, actor_id: uuid.UUID, error: str
         entity_id=run.id,
         action="run.failed",
         payload={"error": error},
+        org_id=org_id,
     )
 
 
@@ -496,8 +515,9 @@ async def _fail_child(
     parent: Run,
     actor_id: uuid.UUID,
     error: str,
+    org_id: uuid.UUID | None = None,
 ) -> None:
     child.status = "failed"
     child.error = error
     child.finished_at = datetime.now(UTC)
-    await _fail(session, parent, actor_id, f"Step '{child.step_id}' failed: {error}")
+    await _fail(session, parent, actor_id, f"Step '{child.step_id}' failed: {error}", org_id=org_id)

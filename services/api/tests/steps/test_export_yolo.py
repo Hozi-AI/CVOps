@@ -71,8 +71,8 @@ async def _seed_commit(session: AsyncSession, backend: S3Backend) -> tuple[str, 
         {"i": proj_id, "o": org_id, "n": f"proj-{uuid.uuid4().hex[:8]}"},
     )
     await session.execute(
-        text("INSERT INTO ontologies (id, project_id, name, version) VALUES (:i, :p, 'o', 1)"),
-        {"i": ont_id, "p": proj_id},
+        text("INSERT INTO ontologies (id, org_id, name, version) VALUES (:i, :o, 'o', 1)"),
+        {"i": ont_id, "o": org_id},
     )
     for key, order in [("cat", 0), ("dog", 1)]:
         await session.execute(

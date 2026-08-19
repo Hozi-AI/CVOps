@@ -211,3 +211,18 @@ async def test_event_actor_id_nullable(session: AsyncSession):
     await session.flush()
 
     assert event.actor_id is None
+
+
+async def test_event_has_org_id(session: AsyncSession) -> None:
+    """org_id column exists, is writable, and survives a flush/refresh."""
+    org_id = uuid.uuid4()
+    ev = Event(
+        entity_type="run",
+        entity_id=uuid.uuid4(),
+        action="run.started",
+        org_id=org_id,
+    )
+    session.add(ev)
+    await session.flush()
+    await session.refresh(ev)
+    assert ev.org_id == org_id

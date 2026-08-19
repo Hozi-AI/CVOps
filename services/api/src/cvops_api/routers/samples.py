@@ -208,6 +208,7 @@ async def update_sample(
         entity_type="sample",
         entity_id=s.id,
         action="sample.updated",
+        org_id=current_user.org_id,
     )
     await session.commit()
     await session.refresh(s)
@@ -230,6 +231,7 @@ async def delete_sample(
         entity_type="sample",
         entity_id=s.id,
         action="sample.deleted",
+        org_id=current_user.org_id,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -323,6 +325,7 @@ async def bulk_sample_action(
             entity_id=project_id,
             action=f"sample.bulk.{body.action}",
             payload={"count": len(valid)},
+            org_id=current_user.org_id,
         )
         await session.commit()
 

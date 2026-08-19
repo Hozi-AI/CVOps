@@ -8,10 +8,14 @@ class OntologyCreate(BaseModel):
     name: str
 
 
+class OntologyUpdate(BaseModel):
+    name: str
+
+
 class OntologyOut(BaseModel):
     model_config = {"from_attributes": True}
     id: uuid.UUID
-    project_id: uuid.UUID
+    org_id: uuid.UUID
     name: str
     version: int
     created_at: datetime

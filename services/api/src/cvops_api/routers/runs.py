@@ -288,7 +288,21 @@ async def resolve_gate(
     if child is None:
         raise HTTPException(status_code=404, detail="Waiting gate step not found")
 
-    child.output_refs = {"resolution": body.resolution}
+    # Carry forward annotation_revision_ids written by cvat_sync (if it ran before
+    # the manual approval) so the downstream commit step receives them even when
+    # the user clicks Approve rather than waiting for the sync to call advance_workflow.
+    lj_row = await session.execute(
+        text(
+            "SELECT annotation_revision_ids_out FROM labeling_jobs "
+            "WHERE run_id = CAST(:rid AS uuid) AND status = 'completed' "
+            "ORDER BY completed_at DESC LIMIT 1"
+        ),
+        {"rid": str(child.id)},
+    )
+    lj = lj_row.first()
+    annotation_revision_ids = list(lj[0]) if lj and lj[0] else []
+
+    child.output_refs = {"resolution": body.resolution, "annotation_revision_ids": annotation_revision_ids}
     child.status = "succeeded"
     child.finished_at = datetime.now(UTC)
     await session.commit()

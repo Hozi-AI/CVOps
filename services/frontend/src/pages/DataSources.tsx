@@ -156,6 +156,15 @@ function SourcePreview({ ds }: { ds: DataSource }) {
 
 function SourceCard({ ds, projectId, onDelete }: { ds: DataSource; projectId: string; onDelete: (id: string) => void }) {
   const frames = ds.sample_count ?? 0
+  const [copied, setCopied] = useState(false)
+
+  function handleCopyId() {
+    navigator.clipboard.writeText(ds.id).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
   return (
     <div className="group h-full bg-surface-2 rounded-xl border border-border shadow-sm overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-lg">
       <SourcePreview ds={ds} />
@@ -165,7 +174,13 @@ function SourceCard({ ds, projectId, onDelete }: { ds: DataSource; projectId: st
             <p className="text-sm font-medium text-text-primary capitalize line-clamp-1">
               {typeof ds.metadata?.name === 'string' ? ds.metadata.name : ds.type.replace('_', ' ')}
             </p>
-            <p className="text-xs text-text-muted mt-0.5 font-mono">{ds.id.slice(0, 8)}…</p>
+            <button
+              onClick={handleCopyId}
+              title={ds.id}
+              className="text-xs text-text-muted mt-0.5 font-mono hover:text-text-primary transition-colors cursor-pointer"
+            >
+              {copied ? '✓ copied' : `${ds.id.slice(0, 8)}…`}
+            </button>
           </div>
           <StatusBadge ds={ds} />
         </div>

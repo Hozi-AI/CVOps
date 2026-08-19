@@ -2,13 +2,12 @@
 
 These tests lock in the parts the engine and registry depend on regardless of
 how built-out each step is: their type_keys, that human_review is a gate, that
-each carries a config_schema, and that register_all() wires all six steps.
+each carries a config_schema, and that register_all() wires all steps.
 
-Implementation status (dev): ``auto_label`` is the only remaining clean stub —
-its run() raises NotImplementedError. ``human_review`` and ``train`` are
-implemented (human_review drives an external CVAT client; train clones and runs
-a trainer repo), so their run() does real work and is exercised by their own
-integration paths, not by a NotImplementedError assertion here.
+Implementation status (dev): all steps are now implemented. ``human_review``
+drives an external CVAT client; ``train`` clones and runs a trainer repo;
+``auto_label`` runs local YOLO inference on the worker-training queue. Each
+step's run() does real work and is exercised by its own integration path.
 """
 
 from __future__ import annotations
@@ -29,8 +28,8 @@ from cvops_steps.train import TrainStep
 
 # All three labeling/train steps share registration-metadata expectations.
 LABELING_TRAIN_STEPS = [AutoLabelStep, HumanReviewStep, TrainStep]
-# Only auto_label is still a clean stub whose run() raises NotImplementedError.
-NOT_YET_IMPLEMENTED = [AutoLabelStep]
+# No remaining stubs: auto_label is now implemented.
+NOT_YET_IMPLEMENTED: list = []
 
 
 def _ctx() -> StepContext:
@@ -100,10 +99,11 @@ async def test_stub_run_raises_not_implemented(step_cls) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_register_all_registers_all_six_steps(monkeypatch) -> None:
+def test_register_all_registers_all_steps(monkeypatch) -> None:
     """register_all() populates the shared registry with every step keyed by
     type_key. Patch in a throwaway Registry so the global one is untouched."""
     import cvops_steps as steps_pkg
+    from cvops_steps.import_dataset import ImportDatasetStep
 
     fresh = Registry()
     monkeypatch.setattr(steps_pkg, "registry", fresh)
@@ -116,9 +116,19 @@ def test_register_all_registers_all_six_steps(monkeypatch) -> None:
         CommitDatasetStep.type_key,
         ExportYoloStep.type_key,
         TrainStep.type_key,
+        ImportDatasetStep.type_key,
+        # new multi-modal steps
+        "step.chunk_text",
+        "step.parse_sensor",
+        "step.export_jsonl",
+        "step.export_csv",
+        # annotation types registered at startup
+        "annotation.text.span",
+        "annotation.text.classification",
+        "annotation.sensor.region",
+        "annotation.sensor.point",
     }
     assert {r.type_key for r in fresh.all()} == expected
-    assert len(expected) == 6  # all type_keys distinct
 
 
 def test_registered_stubs_resolve_to_their_impl(monkeypatch) -> None:

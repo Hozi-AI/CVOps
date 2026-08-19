@@ -6,28 +6,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cvops_api.db.models.ontologies import LabelClass, Ontology
-from tests.db.conftest import make_ontology, make_project
-
-
-# ---------------------------------------------------------------------------
-# Ontology tests
-# ---------------------------------------------------------------------------
+from tests.db.conftest import make_ontology, make_org
 
 
 async def test_ontology_create(session: AsyncSession):
-    project = await make_project(session)
-    ont = Ontology(project_id=project.id, name="base-ontology")
+    org = await make_org(session)
+    ont = Ontology(org_id=org.id, name="base-ontology")
     session.add(ont)
     await session.flush()
 
     assert ont.id is not None
     assert ont.name == "base-ontology"
-    assert ont.project_id == project.id
+    assert ont.org_id == org.id
 
 
 async def test_ontology_version_default(session: AsyncSession):
-    project = await make_project(session)
-    ont = Ontology(project_id=project.id, name="versioned-ontology")
+    org = await make_org(session)
+    ont = Ontology(org_id=org.id, name="versioned-ontology")
     session.add(ont)
     await session.flush()
     await session.refresh(ont)
@@ -35,26 +30,26 @@ async def test_ontology_version_default(session: AsyncSession):
     assert ont.version == 1
 
 
-async def test_ontology_unique_name_per_project(session: AsyncSession):
-    project = await make_project(session)
+async def test_ontology_unique_name_per_org(session: AsyncSession):
+    org = await make_org(session)
     shared_name = f"shared-ont-{uuid.uuid4().hex[:8]}"
 
-    session.add(Ontology(project_id=project.id, name=shared_name))
+    session.add(Ontology(org_id=org.id, name=shared_name))
     await session.flush()
 
-    session.add(Ontology(project_id=project.id, name=shared_name))
+    session.add(Ontology(org_id=org.id, name=shared_name))
     with pytest.raises(IntegrityError):
         await session.flush()
     await session.rollback()
 
 
-async def test_ontology_same_name_different_projects(session: AsyncSession):
-    project_a = await make_project(session)
-    project_b = await make_project(session)
+async def test_ontology_same_name_different_orgs(session: AsyncSession):
+    org_a = await make_org(session)
+    org_b = await make_org(session)
     shared_name = f"shared-ont-{uuid.uuid4().hex[:8]}"
 
-    ont_a = Ontology(project_id=project_a.id, name=shared_name)
-    ont_b = Ontology(project_id=project_b.id, name=shared_name)
+    ont_a = Ontology(org_id=org_a.id, name=shared_name)
+    ont_b = Ontology(org_id=org_b.id, name=shared_name)
     session.add(ont_a)
     session.add(ont_b)
     await session.flush()
@@ -63,19 +58,14 @@ async def test_ontology_same_name_different_projects(session: AsyncSession):
     assert ont_a.name == ont_b.name
 
 
-async def test_ontology_project_fk(session: AsyncSession):
-    fake_project_id = uuid.uuid4()
-    ont = Ontology(project_id=fake_project_id, name="orphan-ontology")
+async def test_ontology_org_fk(session: AsyncSession):
+    fake_org_id = uuid.uuid4()
+    ont = Ontology(org_id=fake_org_id, name="orphan-ontology")
     session.add(ont)
 
     with pytest.raises(IntegrityError):
         await session.flush()
     await session.rollback()
-
-
-# ---------------------------------------------------------------------------
-# LabelClass tests
-# ---------------------------------------------------------------------------
 
 
 async def test_label_class_create(session: AsyncSession):
@@ -113,24 +103,10 @@ async def test_label_class_unique_class_key(session: AsyncSession):
     ont = await make_ontology(session)
     shared_key = "vehicle.car"
 
-    session.add(
-        LabelClass(
-            ontology_id=ont.id,
-            class_key=shared_key,
-            display_name="Car",
-            sort_order=0,
-        )
-    )
+    session.add(LabelClass(ontology_id=ont.id, class_key=shared_key, display_name="Car", sort_order=0))
     await session.flush()
 
-    session.add(
-        LabelClass(
-            ontology_id=ont.id,
-            class_key=shared_key,
-            display_name="Car Duplicate",
-            sort_order=1,
-        )
-    )
+    session.add(LabelClass(ontology_id=ont.id, class_key=shared_key, display_name="Car Dup", sort_order=1))
     with pytest.raises(IntegrityError):
         await session.flush()
     await session.rollback()
@@ -139,24 +115,10 @@ async def test_label_class_unique_class_key(session: AsyncSession):
 async def test_label_class_unique_sort_order(session: AsyncSession):
     ont = await make_ontology(session)
 
-    session.add(
-        LabelClass(
-            ontology_id=ont.id,
-            class_key="vehicle.car",
-            display_name="Car",
-            sort_order=0,
-        )
-    )
+    session.add(LabelClass(ontology_id=ont.id, class_key="vehicle.car", display_name="Car", sort_order=0))
     await session.flush()
 
-    session.add(
-        LabelClass(
-            ontology_id=ont.id,
-            class_key="vehicle.truck",
-            display_name="Truck",
-            sort_order=0,
-        )
-    )
+    session.add(LabelClass(ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=0))
     with pytest.raises(IntegrityError):
         await session.flush()
     await session.rollback()
@@ -167,18 +129,8 @@ async def test_label_class_different_ontologies_same_key(session: AsyncSession):
     ont_b = await make_ontology(session)
     shared_key = "vehicle.car"
 
-    lc_a = LabelClass(
-        ontology_id=ont_a.id,
-        class_key=shared_key,
-        display_name="Car",
-        sort_order=0,
-    )
-    lc_b = LabelClass(
-        ontology_id=ont_b.id,
-        class_key=shared_key,
-        display_name="Car",
-        sort_order=0,
-    )
+    lc_a = LabelClass(ontology_id=ont_a.id, class_key=shared_key, display_name="Car", sort_order=0)
+    lc_b = LabelClass(ontology_id=ont_b.id, class_key=shared_key, display_name="Car", sort_order=0)
     session.add(lc_a)
     session.add(lc_b)
     await session.flush()
@@ -192,9 +144,7 @@ async def test_label_class_sort_order_invariant(session: AsyncSession):
 
     lc0 = LabelClass(ontology_id=ont.id, class_key="person", display_name="Person", sort_order=0)
     lc1 = LabelClass(ontology_id=ont.id, class_key="vehicle.car", display_name="Car", sort_order=1)
-    lc2 = LabelClass(
-        ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=2
-    )
+    lc2 = LabelClass(ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=2)
     session.add_all([lc0, lc1, lc2])
     await session.flush()
 
@@ -204,9 +154,6 @@ async def test_label_class_sort_order_invariant(session: AsyncSession):
     ordered = result.scalars().all()
 
     assert len(ordered) == 3
-    assert ordered[0].sort_order == 0
-    assert ordered[1].sort_order == 1
-    assert ordered[2].sort_order == 2
     assert ordered[0].class_key == "person"
     assert ordered[1].class_key == "vehicle.car"
     assert ordered[2].class_key == "vehicle.truck"

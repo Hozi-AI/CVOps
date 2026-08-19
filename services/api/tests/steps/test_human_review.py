@@ -80,13 +80,18 @@ def fake_cvat_client():
     mod.push_review_task = push_review_task
     mod.register_webhook = register_webhook
     with patch.dict(sys.modules, {"cvops_cvat_client": mod}):
+        # Register the CVAT backend so get_backend("cvat") resolves during tests
+        from cvops_steps.labeling_backends import register_backend, _registry
+        from cvops_steps.labeling_backends.cvat import CvatLabelingBackend
+        register_backend(CvatLabelingBackend())
         yield calls
+        _registry.pop("cvat", None)  # clean up so tests don't bleed state
 
 
 async def _seed(session):
     """One project + ontology + sample with a model pre-label revision + a gate run."""
     proj = await make_project(session)
-    ont = await make_ontology(session, project_id=proj.id)
+    ont = await make_ontology(session, org_id=proj.org_id)
     # A label class on the ontology — human_review seeds the CVAT task with it.
     await session.execute(
         text(
@@ -166,7 +171,7 @@ async def test_push_tolerates_none_revision_ids(session, fake_cvat_client):
     'invalid UUID None'). The sample is still pushed, just with no pre-labels.
     """
     proj = await make_project(session)
-    await make_ontology(session, project_id=proj.id)  # human_review requires one
+    await make_ontology(session, org_id=proj.org_id)  # human_review requires one
     sample = await make_sample(session, project_id=proj.id)
     run = await make_run(
         session, project_id=proj.id, kind="step", status="running", step_id="review_node"

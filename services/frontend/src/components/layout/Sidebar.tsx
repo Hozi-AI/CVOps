@@ -19,6 +19,7 @@ function ProjectNav({ projectId }: { projectId: string }) {
   const items = [
     { to: `/projects/${projectId}`,              label: 'Dashboard',    end: true  },
     { to: `/projects/${projectId}/data-sources`, label: 'Data Sources', end: false },
+    { to: `/projects/${projectId}/import`,       label: 'Import',       end: false },
     { to: `/projects/${projectId}/samples`,      label: 'Samples',      end: false },
     { to: `/projects/${projectId}/datasets`,     label: 'Datasets',     end: false },
     { to: `/projects/${projectId}/workflows`,    label: 'Workflows',    end: false },
@@ -63,8 +64,11 @@ export function Sidebar() {
           <NavLink to="/projects" end className={navClass}>
             All Projects
           </NavLink>
-          <NavLink to="/cvat-models" className={navClass}>
-            Deployed Models
+<NavLink to="/ontologies" className={navClass}>
+            Label Sets
+          </NavLink>
+          <NavLink to="/activity" className={navClass}>
+            Activity
           </NavLink>
         </nav>
 
