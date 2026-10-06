@@ -473,7 +473,11 @@ local_resource('frontend',
     # MLflow comes up on host :5000 only when training is enabled, so the
     # model-page "MLflow run" link points there. With training off the link is
     # dead (no runs exist anyway). VM devs can override in .env.
-    serve_env={'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000')},
+    serve_env={
+        'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000'),
+        # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge.
+        'VITE_HMR_CLIENT_PORT': env.get('VITE_HMR_CLIENT_PORT', ''),
+    },
     deps=['services/frontend/src', 'services/frontend/vite.config.ts', 'services/frontend/index.html'],
     resource_deps=['api', 'frontend-install'],
     readiness_probe=probe(
