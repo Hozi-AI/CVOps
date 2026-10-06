@@ -123,6 +123,12 @@ def envreq(key):
         fail('manifests/.env is missing required key: %s' % key)
     return env[key]
 
+# Host ports the infra containers publish (docker-compose.yml `ports:`); the host
+# processes below connect through them. Override in manifests/.env when the
+# defaults are taken on your machine.
+POSTGRES_HOST_PORT = env.get('POSTGRES_HOST_PORT') or '5432'
+REDIS_HOST_PORT    = env.get('REDIS_HOST_PORT') or '6379'
+
 # ── Optional heavy stacks (OFF by default for low-powered machines) ─────────
 # CVAT (labelling) and the training/MLflow stack are the expensive parts of the
 # system:
@@ -217,7 +223,7 @@ if ENABLE_CVAT:
 
 dc_resource('postgres',
     labels=['1-infra'],
-    links=[link('postgres://localhost:5432', 'pg')],
+    links=[link('postgres://localhost:%s' % POSTGRES_HOST_PORT, 'pg')],
 )
 
 dc_resource('garage-init',
@@ -235,7 +241,7 @@ dc_resource('garage',
 
 dc_resource('redis',
     labels=['1-infra'],
-    links=[link('redis://localhost:6379', 'redis')],
+    links=[link('redis://localhost:%s' % REDIS_HOST_PORT, 'redis')],
 )
 
 # MLflow tracking server (+ one-shot DB create). Gated to the `mlflow` compose
@@ -434,10 +440,10 @@ local_resource('frontend-install',
 # Connection strings rewritten to localhost:<published-port> — the host process
 # hits Docker's exposed ports, not the compose-internal network DNS.
 api_env = {
-    'DATABASE_URL': 'postgresql+asyncpg://%s:%s@localhost:5432/%s' % (
-        envreq('POSTGRES_USER'), envreq('POSTGRES_PASSWORD'), envreq('POSTGRES_DB'),
+    'DATABASE_URL': 'postgresql+asyncpg://%s:%s@localhost:%s/%s' % (
+        envreq('POSTGRES_USER'), envreq('POSTGRES_PASSWORD'), POSTGRES_HOST_PORT, envreq('POSTGRES_DB'),
     ),
-    'REDIS_URL':       'redis://localhost:6379/0',
+    'REDIS_URL':       'redis://localhost:%s/0' % REDIS_HOST_PORT,
     'S3_ENDPOINT':     'http://localhost:3900',
     # S3_PUBLIC_ENDPOINT intentionally unset: the API derives the presign host
     # per-request from the browser's Host header, so uploads work from localhost
