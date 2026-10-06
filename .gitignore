@@ -21,6 +21,7 @@ env/
 .env
 .env.local
 .env.*.local
+manifests/docker-compose.local.yml
 *.env
 .pytest_cache/
 .mypy_cache/

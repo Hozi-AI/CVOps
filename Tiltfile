@@ -183,8 +183,14 @@ main_profiles = []
 if ENABLE_TRAINING:
     main_profiles = main_profiles + ['worker', 'mlflow']
 
+# manifests/docker-compose.local.yml is an optional, gitignored per-machine
+# override (extra networks, labels, ...) merged on top when present.
+main_compose = ['manifests/docker-compose.yml']
+if os.path.exists('manifests/docker-compose.local.yml'):
+    main_compose.append('manifests/docker-compose.local.yml')
+
 docker_compose(
-    ['manifests/docker-compose.yml'],
+    main_compose,
     env_file='manifests/.env',
     project_name='cvops',
     profiles=main_profiles,
