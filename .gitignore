@@ -70,3 +70,6 @@ models/
 *.key
 secrets/
 frame_extractor/videos/
+
+# just task-runner state (logs, pids)
+.just/
