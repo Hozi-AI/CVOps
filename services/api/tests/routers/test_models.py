@@ -15,6 +15,7 @@ router, with get_session/get_current_user overridden and get_storage faked.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest_asyncio
@@ -153,6 +154,64 @@ async def test_get_model(factory) -> None:
     assert body["id"] == str(mv_id)
     assert body["blob_hash"] == blob_hash
     assert body["base_model"] == "yolov8n"
+
+
+async def _dataset_id_of(factory, mv_id: uuid.UUID) -> uuid.UUID:
+    async with factory() as s:
+        mv = await s.get(ModelVersion, mv_id)
+        assert mv is not None and mv.trained_on_commit_id is not None
+        commit = await s.get(Commit, mv.trained_on_commit_id)
+        assert commit is not None
+        return commit.dataset_id
+
+
+async def test_get_model_includes_trained_on_dataset_id(factory) -> None:
+    user, _project, mv_id, _ = await _seed(factory)
+    expected = await _dataset_id_of(factory, mv_id)
+    async with _client(factory, user) as c:
+        res = await c.get(f"/models/{mv_id}")
+    assert res.status_code == 200, res.text
+    assert res.json()["trained_on_dataset_id"] == str(expected)
+
+
+async def test_list_models_includes_trained_on_dataset_id(factory) -> None:
+    user, project, mv_id, _ = await _seed(factory)
+    expected = await _dataset_id_of(factory, mv_id)
+    async with _client(factory, user) as c:
+        res = await c.get(f"/projects/{project.id}/models")
+    assert res.status_code == 200, res.text
+    assert res.json()[0]["trained_on_dataset_id"] == str(expected)
+
+
+async def test_trained_on_dataset_id_null_without_commit(factory) -> None:
+    user, _project, mv_id, _ = await _seed(factory)
+    async with factory() as s:
+        mv = await s.get(ModelVersion, mv_id)
+        assert mv is not None
+        mv.trained_on_commit_id = None
+        await s.commit()
+    async with _client(factory, user) as c:
+        res = await c.get(f"/models/{mv_id}")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["trained_on_commit_id"] is None
+    assert body["trained_on_dataset_id"] is None
+
+
+async def test_trained_on_dataset_id_null_when_dataset_deleted(factory) -> None:
+    user, _project, mv_id, _ = await _seed(factory)
+    dataset_id = await _dataset_id_of(factory, mv_id)
+    async with factory() as s:
+        dataset = await s.get(Dataset, dataset_id)
+        assert dataset is not None
+        dataset.deleted_at = datetime.now(UTC)
+        await s.commit()
+    async with _client(factory, user) as c:
+        res = await c.get(f"/models/{mv_id}")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["trained_on_commit_id"] is not None
+    assert body["trained_on_dataset_id"] is None
 
 
 async def test_get_missing_model_404(factory) -> None:
