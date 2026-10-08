@@ -123,13 +123,15 @@ export default function ModelDetail() {
               <div>
                 <dt className="text-xs text-text-muted">Trained on commit</dt>
                 <dd className="mt-0.5 font-mono text-xs font-medium text-text-primary">
-                  {model.trained_on_commit_id ? (
+                  {model.trained_on_commit_id && model.trained_on_dataset_id ? (
                     <Link
-                      to={`/projects/${model.project_id}/commits/${model.trained_on_commit_id}`}
+                      to={`/datasets/${model.trained_on_dataset_id}/commits/${model.trained_on_commit_id}`}
                       className="text-iris-400 hover:opacity-80"
                     >
                       {model.trained_on_commit_id.slice(0, 8)} ↗
                     </Link>
+                  ) : model.trained_on_commit_id ? (
+                    model.trained_on_commit_id.slice(0, 8)
                   ) : '—'}
                 </dd>
               </div>
