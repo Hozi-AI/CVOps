@@ -1,0 +1,12 @@
+# Gate for API locations: XHR callers get a plain 401 (the SPA then sends the
+# browser to /oauth2/start itself). On success, forward the identity plus the
+# shared secret that proves to the API this request came through the edge.
+# proxy_set_header overwrites any client-supplied copy of these headers.
+auth_request     /oauth2/auth;
+auth_request_set $cvops_auth_user   $upstream_http_x_auth_request_user;
+auth_request_set $cvops_auth_email  $upstream_http_x_auth_request_email;
+auth_request_set $cvops_auth_cookie $upstream_http_set_cookie;
+add_header       Set-Cookie $cvops_auth_cookie;
+proxy_set_header X-Auth-Request-User  $cvops_auth_user;
+proxy_set_header X-Auth-Request-Email $cvops_auth_email;
+proxy_set_header X-Proxy-Secret       "${CVOPS_PROXY_SHARED_SECRET}";

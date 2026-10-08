@@ -1,0 +1,11 @@
+# Gate for browser-navigated locations: same as the API gate, but a 401
+# redirects into the login flow instead of surfacing to the user.
+auth_request     /oauth2/auth;
+error_page       401 = @cvops_auth_start;
+auth_request_set $cvops_auth_user   $upstream_http_x_auth_request_user;
+auth_request_set $cvops_auth_email  $upstream_http_x_auth_request_email;
+auth_request_set $cvops_auth_cookie $upstream_http_set_cookie;
+add_header       Set-Cookie $cvops_auth_cookie;
+proxy_set_header X-Auth-Request-User  $cvops_auth_user;
+proxy_set_header X-Auth-Request-Email $cvops_auth_email;
+proxy_set_header X-Proxy-Secret       "${CVOPS_PROXY_SHARED_SECRET}";

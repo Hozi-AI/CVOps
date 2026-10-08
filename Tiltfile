@@ -138,9 +138,14 @@ def envreq(key):
 #   tilt up -- --heavy           # both
 #   export CVOPS_ENABLE_CVAT=1       # persistent (shell env, or manifests/.env)
 #   export CVOPS_ENABLE_TRAINING=1
+#
+# Edge auth (nginx + oauth2-proxy + Keycloak, see docs/edge-auth.md) is also
+# opt-in, but light — it is not part of --heavy:
+#   tilt up -- --auth            # or CVOPS_ENABLE_AUTH=1
 config.define_bool('cvat')
 config.define_bool('training')
 config.define_bool('heavy')
+config.define_bool('auth')
 config.define_bool('no-yolo-base')
 cfg = config.parse()
 
@@ -157,10 +162,12 @@ def feature_enabled(flag):
 
 ENABLE_CVAT = feature_enabled('cvat')
 ENABLE_TRAINING = feature_enabled('training')
+ENABLE_AUTH = cfg.get('auth') or _truthy(os.getenv('CVOPS_ENABLE_AUTH', env.get('CVOPS_ENABLE_AUTH', '')))
 
-print('CVOps optional stacks → CVAT: %s | training+MLflow: %s' % (
+print('CVOps optional stacks → CVAT: %s | training+MLflow: %s | edge auth: %s' % (
     'on' if ENABLE_CVAT else 'off (use --cvat or CVOPS_ENABLE_CVAT=1)',
     'on' if ENABLE_TRAINING else 'off (use --training or CVOPS_ENABLE_TRAINING=1)',
+    'on' if ENABLE_AUTH else 'off (use --auth or CVOPS_ENABLE_AUTH=1)',
 ))
 
 # ── Infra containers (docker compose) ───────────────────────────────────────
@@ -183,8 +190,14 @@ main_profiles = []
 if ENABLE_TRAINING:
     main_profiles = main_profiles + ['worker', 'mlflow']
 
+# Edge auth layers its overlay on the main project: it adds keycloak +
+# oauth2-proxy and mounts the auth templates into the existing nginx.
+main_compose_files = ['manifests/docker-compose.yml']
+if ENABLE_AUTH:
+    main_compose_files = main_compose_files + ['manifests/docker-compose.auth.yml']
+
 docker_compose(
-    ['manifests/docker-compose.yml'],
+    main_compose_files,
     env_file='manifests/.env',
     project_name='cvops',
     profiles=main_profiles,
@@ -450,6 +463,11 @@ api_env = {
     # worker-cvat exposes GET /models on port 8001 (proxied by cvats.py router).
     'MODEL_DEPLOYER_URL': 'http://localhost:8001',
 }
+# Edge auth: identity comes from nginx's X-Auth-Request-* headers instead of
+# the API's own JWT login (see core/proxy_auth.py).
+if ENABLE_AUTH:
+    api_env['AUTH_MODE'] = 'proxy'
+    api_env['PROXY_SHARED_SECRET'] = envreq('PROXY_SHARED_SECRET')
 
 local_resource('api',
     serve_cmd='cd services/api && .venv/bin/python -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload',
@@ -473,7 +491,11 @@ local_resource('frontend',
     # MLflow comes up on host :5000 only when training is enabled, so the
     # model-page "MLflow run" link points there. With training off the link is
     # dead (no runs exist anyway). VM devs can override in .env.
-    serve_env={'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000')},
+    serve_env={
+        'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000'),
+        # proxy = no login page; 401s and logout go through oauth2-proxy.
+        'VITE_AUTH_MODE': 'proxy' if ENABLE_AUTH else 'local',
+    },
     deps=['services/frontend/src', 'services/frontend/vite.config.ts', 'services/frontend/index.html'],
     resource_deps=['api', 'frontend-install'],
     readiness_probe=probe(
@@ -494,6 +516,16 @@ dc_resource('nginx',
     resource_deps=['api', 'frontend'],
     links=[link('http://localhost', 'app (nginx)')],
 )
+
+if ENABLE_AUTH:
+    dc_resource('keycloak',
+        labels=['1-infra'],
+        links=[link('http://localhost:8081', 'keycloak admin')],
+    )
+    dc_resource('oauth2-proxy',
+        labels=['1-infra'],
+        resource_deps=['keycloak'],
+    )
 
 # ── Optional helper resources (manual trigger) ──────────────────────────────
 local_resource('git-hooks',

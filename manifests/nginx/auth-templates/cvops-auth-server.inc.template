@@ -1,0 +1,47 @@
+# Server-level edge-auth locations. Rendered by the nginx image's envsubst step
+# into /etc/nginx/conf.d/cvops-auth-server.inc (only `CVOPS_*` vars are
+# substituted, see NGINX_ENVSUBST_FILTER in docker-compose.auth.yml) and pulled
+# in by the `include` hook at the top of nginx.conf.
+
+# oauth2-proxy's own endpoints: /oauth2/start, /oauth2/callback,
+# /oauth2/sign_out, ... Host keeps the port so oauth2-proxy derives the right
+# callback URL for whichever host the browser used (localhost, a dev VM).
+location /oauth2/ {
+    proxy_pass       http://oauth2-proxy:4180;
+    proxy_set_header Host              $http_host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host  $http_host;
+}
+
+# The auth_request subrequest: 202 = session valid, 401 = not logged in. On
+# success oauth2-proxy answers with X-Auth-Request-{User,Email} (set_xauthrequest).
+location = /oauth2/auth {
+    internal;
+    proxy_pass              http://oauth2-proxy:4180;
+    proxy_pass_request_body off;
+    proxy_set_header        Content-Length    "";
+    proxy_set_header        Host              $http_host;
+    proxy_set_header        X-Real-IP         $remote_addr;
+    proxy_set_header        X-Forwarded-Proto $scheme;
+    proxy_set_header        X-Forwarded-Host  $http_host;
+    proxy_set_header        X-Forwarded-Uri   $request_uri;
+}
+
+# Liveness for the nginx healthcheck (the gated `/` would redirect to login).
+location = /oauth2/ping {
+    proxy_pass http://oauth2-proxy:4180/ping;
+}
+
+# Where a gated page goes on 401: start the login flow, returning to the page
+# the user asked for. The return path travels in X-Auth-Request-Redirect rather
+# than ?rd= so a query string with `&` in it survives intact.
+location @cvops_auth_start {
+    rewrite ^ /oauth2/start? break;
+    proxy_pass       http://oauth2-proxy:4180;
+    proxy_set_header Host                    $http_host;
+    proxy_set_header X-Real-IP               $remote_addr;
+    proxy_set_header X-Forwarded-Proto       $scheme;
+    proxy_set_header X-Forwarded-Host        $http_host;
+    proxy_set_header X-Auth-Request-Redirect $request_uri;
+}

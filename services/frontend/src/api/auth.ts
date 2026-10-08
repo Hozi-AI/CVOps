@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { client } from '../lib/client'
+import { edgeSignOut, isEdgeAuth } from '../lib/edgeAuth'
 
 export interface TokenResponse {
   access_token: string
@@ -24,6 +25,8 @@ export function clearTokens() {
 }
 
 export function isAuthenticated() {
+  // Under edge auth nginx only serves the app to a logged-in session.
+  if (isEdgeAuth) return true
   return !!localStorage.getItem('access_token')
 }
 
@@ -45,6 +48,7 @@ export async function register(
 }
 
 export async function logout() {
+  if (isEdgeAuth) return edgeSignOut()
   const refresh_token = localStorage.getItem('refresh_token')
   try {
     await client.post('/auth/revoke', { refresh_token })

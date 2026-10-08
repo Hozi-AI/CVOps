@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { isEdgeAuth, startEdgeLogin } from './edgeAuth'
 
 export const client = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api/v1' })
 
@@ -16,6 +17,8 @@ client.interceptors.response.use(
   async (err) => {
     const orig = err.config
     if (err.response?.status !== 401 || orig._retry) return Promise.reject(err)
+    // Edge auth has no refresh token: the session lives in oauth2-proxy's cookie.
+    if (isEdgeAuth) return startEdgeLogin()
     orig._retry = true
 
     if (refreshing) {

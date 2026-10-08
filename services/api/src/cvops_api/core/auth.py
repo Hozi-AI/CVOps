@@ -14,12 +14,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cvops_api.config import settings
+from cvops_api.core.proxy_auth import resolve_proxy_user
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
 
 _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/token")
 oauth2_scheme = _oauth2
+# get_current_user raises its own 401 so AUTH_MODE=proxy can run without a token.
+_oauth2_optional = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 _REVOKED_PREFIX = "revoked:"
 
@@ -114,9 +117,18 @@ async def resolve_user(token: str, session: AsyncSession) -> User:
 
 
 async def get_current_user(
-    token: str = Depends(_oauth2),
+    request: Request,
+    token: str | None = Depends(_oauth2_optional),
     session: AsyncSession = Depends(get_session),
 ) -> User:
+    if settings.AUTH_MODE == "proxy":
+        return await resolve_proxy_user(request, session)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return await resolve_user(token, session)
 
 
@@ -129,6 +141,8 @@ async def get_viewer_user(
 
     Accepts the JWT either as a `?token=` query param (so a plain browser
     navigation works) or as the usual `Authorization: Bearer` header."""
+    if settings.AUTH_MODE == "proxy":
+        return await resolve_proxy_user(request, session)
     if token is None:
         header = request.headers.get("authorization", "")
         scheme, _, value = header.partition(" ")

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Known placeholder values that must never be used in production.
@@ -40,6 +42,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     WORKER_TOKEN: str = "change-me-worker-token"
+    # "local" = the API's own JWT login. "proxy" = identity comes from the edge
+    # (nginx + oauth2-proxy, see docs/edge-auth.md): trusted X-Auth-Request-*
+    # headers, accepted only alongside a matching X-Proxy-Secret.
+    AUTH_MODE: Literal["local", "proxy"] = "local"
+    PROXY_SHARED_SECRET: str = ""
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
@@ -63,6 +70,12 @@ def validate_secrets(s: Settings) -> None:
     import Settings freely without needing real secrets in the test environment.
     Bypass with ALLOW_INSECURE_DEFAULTS=true for local development only.
     """
+    # Not bypassable: in proxy mode a weak secret means anyone who can reach the
+    # API directly can claim any identity via a spoofed header.
+    if s.AUTH_MODE == "proxy" and len(s.PROXY_SHARED_SECRET) < 32:
+        raise RuntimeError(
+            "AUTH_MODE=proxy requires PROXY_SHARED_SECRET of at least 32 characters."
+        )
     if s.ALLOW_INSECURE_DEFAULTS:
         return
     flagged = [

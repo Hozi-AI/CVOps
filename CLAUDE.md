@@ -27,6 +27,8 @@ Two distinct entry points — keep them straight:
 
 **Optional heavy stacks (OFF by default).** The CVAT labelling stack (~10 containers + submodule checkout + nuctl + `worker-cvat`) and the training stack (`worker-training`'s multi-GB torch/ultralytics image + MLflow) are the expensive parts, so a plain `tilt up` skips both and brings up only the core (postgres, redis, garage, api, frontend, `worker-preprocessing`, nginx, migrations). Opt in per-run with Tilt args — `tilt up -- --cvat`, `tilt up -- --training`, `tilt up -- --heavy` (both) — or persistently with env vars `CVOPS_ENABLE_CVAT=1` / `CVOPS_ENABLE_TRAINING=1` (shell env or `manifests/.env`). The toggles drive both the host resources and the compose profiles (`worker` + `mlflow`); MLflow is now profile-gated in `docker-compose.yml`, so it comes up only with training (Tilt) or `--profile app/all` (compose).
 
+**Optional edge auth (OFF by default).** `tilt up -- --auth` (or `CVOPS_ENABLE_AUTH=1`) layers `manifests/docker-compose.auth.yml` on the stack: Keycloak + oauth2-proxy, with nginx gating every page/API request via `auth_request`. The API runs with `AUTH_MODE=proxy` and trusts `X-Auth-Request-Email` only alongside a matching `X-Proxy-Secret`. See `docs/edge-auth.md`.
+
 **Pre-prod / integration → `docker compose` with profiles** (from `manifests/`). Everything containerised.
 
 ```bash

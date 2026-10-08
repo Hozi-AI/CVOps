@@ -1,0 +1,94 @@
+# Edge auth overlay: nginx + oauth2-proxy + Keycloak. See docs/edge-auth.md.
+#
+# Layered on top of docker-compose.yml rather than profile-gated inside it,
+# because turning auth on also has to *change* the existing nginx service
+# (mount the auth templates). Without this file the stack is unauthenticated,
+# exactly as before.
+#
+#   tilt up -- --auth                       # or CVOPS_ENABLE_AUTH=1
+#   docker compose -f docker-compose.yml -f docker-compose.auth.yml up
+#
+# Flow: nginx `auth_request`s every page/API request to oauth2-proxy; with no
+# session oauth2-proxy runs the OIDC login against Keycloak. On success nginx
+# forwards X-Auth-Request-Email + X-Proxy-Secret, and the API (AUTH_MODE=proxy)
+# maps the email to a CVOps user, provisioning one on first login.
+
+services:
+  nginx:
+    volumes:
+      # The image's entrypoint envsubst-renders /etc/nginx/templates/*.template
+      # into /etc/nginx/conf.d/, where nginx.conf's include hooks pick them up.
+      - ./nginx/auth-templates:/etc/nginx/templates:ro,z
+    environment:
+      # Substitute only our vars, never nginx's own $host/$request_uri/...
+      NGINX_ENVSUBST_FILTER: "^CVOPS_"
+      CVOPS_PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:?set PROXY_SHARED_SECRET in manifests/.env}
+    depends_on:
+      oauth2-proxy: { condition: service_started }
+    healthcheck:
+      # `/` is gated now (it would redirect to Keycloak); probe through nginx
+      # to oauth2-proxy's liveness endpoint instead.
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/oauth2/ping || exit 1"]
+
+  # Only used under `--profile app/all` (Tilt runs the API on the host and
+  # passes the same two vars itself).
+  api:
+    environment:
+      AUTH_MODE: proxy
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:?set PROXY_SHARED_SECRET in manifests/.env}
+
+  # ── Identity provider ──────────────────────────────────────────────────
+  # Dev mode (embedded H2, HTTP), realm `cvops` imported on first start from
+  # keycloak/realm-cvops.json; `${...}` placeholders in that file resolve from
+  # this container's env. Admin console: http://localhost:8081 (admin / KEYCLOAK_ADMIN_PASSWORD).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    restart: unless-stopped
+    ports: ["8081:8080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in manifests/.env}
+      # Browser-facing URL: tokens are issued with this as `iss`, even when
+      # oauth2-proxy redeems codes over the internal keycloak:8080 back channel.
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      CVOPS_EDGE_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?set OAUTH2_PROXY_CLIENT_SECRET in manifests/.env}
+      CVOPS_SEED_USER_PASSWORD: ${KEYCLOAK_SEED_USER_PASSWORD:?set KEYCLOAK_SEED_USER_PASSWORD in manifests/.env}
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro,z
+
+  # ── Auth gate ──────────────────────────────────────────────────────────
+  # Provider-agnostic: swap the OIDC URLs/client to point at any other IdP.
+  # Discovery is skipped on purpose: the browser reaches Keycloak at
+  # KEYCLOAK_PUBLIC_URL but this container reaches it at keycloak:8080, so the
+  # browser-facing and back-channel URLs are given explicitly.
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+    restart: unless-stopped
+    depends_on:
+      keycloak: { condition: service_started }
+    environment:
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_PROVIDER: keycloak-oidc
+      OAUTH2_PROXY_CLIENT_ID: cvops-edge
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?set OAUTH2_PROXY_CLIENT_SECRET in manifests/.env}
+      OAUTH2_PROXY_CODE_CHALLENGE_METHOD: S256
+      OAUTH2_PROXY_SCOPE: openid email profile
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8081}/realms/cvops
+      OAUTH2_PROXY_SKIP_OIDC_DISCOVERY: "true"
+      OAUTH2_PROXY_LOGIN_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8081}/realms/cvops/protocol/openid-connect/auth
+      OAUTH2_PROXY_REDEEM_URL: http://keycloak:8080/realms/cvops/protocol/openid-connect/token
+      OAUTH2_PROXY_OIDC_JWKS_URL: http://keycloak:8080/realms/cvops/protocol/openid-connect/certs
+      # /oauth2/sign_out also ends the Keycloak SSO session, so logging out
+      # actually logs out instead of silently signing straight back in.
+      OAUTH2_PROXY_BACKEND_LOGOUT_URL: http://keycloak:8080/realms/cvops/protocol/openid-connect/logout?id_token_hint={id_token}
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?set OAUTH2_PROXY_COOKIE_SECRET in manifests/.env}
+      # Plain-HTTP dev edge. Set to true once nginx terminates TLS.
+      OAUTH2_PROXY_COOKIE_SECURE: ${OAUTH2_PROXY_COOKIE_SECURE:-false}
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      # auth_request mode: there is no upstream to proxy to.
+      OAUTH2_PROXY_UPSTREAMS: static://202
