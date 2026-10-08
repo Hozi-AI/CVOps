@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cvops_api.config import settings
-from cvops_api.core.proxy_auth import resolve_proxy_user
+from cvops_api.core.proxy_auth import get_or_provision_user, resolve_proxy_user
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
 
@@ -121,6 +121,8 @@ async def get_current_user(
     token: str | None = Depends(_oauth2_optional),
     session: AsyncSession = Depends(get_session),
 ) -> User:
+    if settings.AUTH_MODE == "none":
+        return await get_or_provision_user(session, settings.DEV_USER_EMAIL)
     if settings.AUTH_MODE == "proxy":
         return await resolve_proxy_user(request, session)
     if not token:
@@ -141,6 +143,8 @@ async def get_viewer_user(
 
     Accepts the JWT either as a `?token=` query param (so a plain browser
     navigation works) or as the usual `Authorization: Bearer` header."""
+    if settings.AUTH_MODE == "none":
+        return await get_or_provision_user(session, settings.DEV_USER_EMAIL)
     if settings.AUTH_MODE == "proxy":
         return await resolve_proxy_user(request, session)
     if token is None:

@@ -44,9 +44,11 @@ class Settings(BaseSettings):
     WORKER_TOKEN: str = "change-me-worker-token"
     # "local" = the API's own JWT login. "proxy" = identity comes from the edge
     # (nginx + oauth2-proxy, see docs/edge-auth.md): trusted X-Auth-Request-*
-    # headers, accepted only alongside a matching X-Proxy-Secret.
-    AUTH_MODE: Literal["local", "proxy"] = "local"
+    # headers, accepted only alongside a matching X-Proxy-Secret. "none" = no
+    # login at all: every request is DEV_USER_EMAIL (single-user local dev only).
+    AUTH_MODE: Literal["none", "local", "proxy"] = "local"
     PROXY_SHARED_SECRET: str = ""
+    DEV_USER_EMAIL: str = "dev@example.com"
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
@@ -75,6 +77,13 @@ def validate_secrets(s: Settings) -> None:
     if s.AUTH_MODE == "proxy" and len(s.PROXY_SHARED_SECRET) < 32:
         raise RuntimeError(
             "AUTH_MODE=proxy requires PROXY_SHARED_SECRET of at least 32 characters."
+        )
+    # No login means anyone who can reach the API is the dev user, so it must be
+    # paired with the explicit local-dev-only opt-in.
+    if s.AUTH_MODE == "none" and not s.ALLOW_INSECURE_DEFAULTS:
+        raise RuntimeError(
+            "AUTH_MODE=none disables login entirely and is for local dev only; "
+            "it also requires ALLOW_INSECURE_DEFAULTS=true."
         )
     if s.ALLOW_INSECURE_DEFAULTS:
         return

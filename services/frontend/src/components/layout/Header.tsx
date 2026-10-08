@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useTheme, type ThemeMode } from '../../lib/theme'
-import { logout, useMe } from '../../api/auth'
+import { isNoAuth, logout, useMe } from '../../api/auth'
 import { useProject } from '../../api/projects'
 import { useActiveProjectId } from '../../lib/useActiveProject'
 import { useUIStore } from '../../store/ui'
@@ -94,8 +94,12 @@ export function Header() {
             <p className="truncate text-xs text-text-muted">Org · {me.org_id.slice(0, 8)}</p>
           )}
         </div>
-        <div className="my-1 border-t border-border" />
-        <MenuItem onClick={handleLogout}>Log out</MenuItem>
+        {!isNoAuth && (
+          <>
+            <div className="my-1 border-t border-border" />
+            <MenuItem onClick={handleLogout}>Log out</MenuItem>
+          </>
+        )}
       </Menu>
     </header>
   )

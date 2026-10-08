@@ -24,9 +24,13 @@ export function clearTokens() {
   localStorage.removeItem('refresh_token')
 }
 
+// VITE_AUTH_MODE=none: no login at all; the API treats every request as the
+// single dev user (local dev only, see AUTH_MODE=none in the API config).
+export const isNoAuth = import.meta.env.VITE_AUTH_MODE === 'none'
+
 export function isAuthenticated() {
   // Under edge auth nginx only serves the app to a logged-in session.
-  if (isEdgeAuth) return true
+  if (isEdgeAuth || isNoAuth) return true
   return !!localStorage.getItem('access_token')
 }
 

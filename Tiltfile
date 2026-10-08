@@ -142,10 +142,14 @@ def envreq(key):
 # Edge auth (nginx + oauth2-proxy + Keycloak, see docs/edge-auth.md) is also
 # opt-in, but light — it is not part of --heavy:
 #   tilt up -- --auth            # or CVOPS_ENABLE_AUTH=1
+#
+# No login at all (single-user local dev — every request is DEV_USER_EMAIL):
+#   tilt up -- --no-login        # or CVOPS_NO_LOGIN=1
 config.define_bool('cvat')
 config.define_bool('training')
 config.define_bool('heavy')
 config.define_bool('auth')
+config.define_bool('no-login')
 config.define_bool('no-yolo-base')
 cfg = config.parse()
 
@@ -163,11 +167,17 @@ def feature_enabled(flag):
 ENABLE_CVAT = feature_enabled('cvat')
 ENABLE_TRAINING = feature_enabled('training')
 ENABLE_AUTH = cfg.get('auth') or _truthy(os.getenv('CVOPS_ENABLE_AUTH', env.get('CVOPS_ENABLE_AUTH', '')))
+NO_LOGIN = cfg.get('no-login') or _truthy(os.getenv('CVOPS_NO_LOGIN', env.get('CVOPS_NO_LOGIN', '')))
+if NO_LOGIN and ENABLE_AUTH:
+    fail('--no-login and --auth are mutually exclusive: pick no login or edge login.')
+# api AUTH_MODE / frontend VITE_AUTH_MODE: local = the API's register/login page.
+AUTH_MODE = 'proxy' if ENABLE_AUTH else ('none' if NO_LOGIN else 'local')
 
-print('CVOps optional stacks → CVAT: %s | training+MLflow: %s | edge auth: %s' % (
+print('CVOps optional stacks → CVAT: %s | training+MLflow: %s | edge auth: %s | login: %s' % (
     'on' if ENABLE_CVAT else 'off (use --cvat or CVOPS_ENABLE_CVAT=1)',
     'on' if ENABLE_TRAINING else 'off (use --training or CVOPS_ENABLE_TRAINING=1)',
     'on' if ENABLE_AUTH else 'off (use --auth or CVOPS_ENABLE_AUTH=1)',
+    'off (dev user)' if NO_LOGIN else 'on (use --no-login or CVOPS_NO_LOGIN=1 to skip)',
 ))
 
 # ── Infra containers (docker compose) ───────────────────────────────────────
@@ -468,6 +478,10 @@ api_env = {
 if ENABLE_AUTH:
     api_env['AUTH_MODE'] = 'proxy'
     api_env['PROXY_SHARED_SECRET'] = envreq('PROXY_SHARED_SECRET')
+# No login: the API refuses AUTH_MODE=none without the explicit local-dev opt-in.
+if NO_LOGIN:
+    api_env['AUTH_MODE'] = 'none'
+    api_env['ALLOW_INSECURE_DEFAULTS'] = 'true'
 
 local_resource('api',
     serve_cmd='cd services/api && .venv/bin/python -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload',
@@ -494,7 +508,8 @@ local_resource('frontend',
     serve_env={
         'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000'),
         # proxy = no login page; 401s and logout go through oauth2-proxy.
-        'VITE_AUTH_MODE': 'proxy' if ENABLE_AUTH else 'local',
+        # none = no login page and no logout; the API is the fixed dev user.
+        'VITE_AUTH_MODE': AUTH_MODE,
     },
     deps=['services/frontend/src', 'services/frontend/vite.config.ts', 'services/frontend/index.html'],
     resource_deps=['api', 'frontend-install'],

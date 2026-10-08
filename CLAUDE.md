@@ -29,6 +29,8 @@ Two distinct entry points — keep them straight:
 
 **Optional edge auth (OFF by default).** `tilt up -- --auth` (or `CVOPS_ENABLE_AUTH=1`) layers `manifests/docker-compose.auth.yml` on the stack: Keycloak + oauth2-proxy, with nginx gating every page/API request via `auth_request`. The API runs with `AUTH_MODE=proxy` and trusts `X-Auth-Request-Email` only alongside a matching `X-Proxy-Secret`. See `docs/edge-auth.md`.
 
+**Optional no-login mode (OFF by default).** `tilt up -- --no-login` (or `CVOPS_NO_LOGIN=1`) is for single-user local dev: the API runs with `AUTH_MODE=none` and treats every request as `DEV_USER_EMAIL` (provisioned on first use), and the SPA hides the login page and logout. The API refuses `AUTH_MODE=none` unless `ALLOW_INSECURE_DEFAULTS=true` (Tilt sets both). Mutually exclusive with `--auth`.
+
 **Pre-prod / integration → `docker compose` with profiles** (from `manifests/`). Everything containerised.
 
 ```bash

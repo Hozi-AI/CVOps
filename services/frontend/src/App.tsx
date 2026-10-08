@@ -21,7 +21,7 @@ import ProjectSettings from './pages/ProjectSettings'
 import ImportDataset from './pages/ImportDataset'
 import Login from './pages/Login'
 import Register from './pages/Register'
-import { isAuthenticated } from './api/auth'
+import { isAuthenticated, isNoAuth } from './api/auth'
 
 // Code-split the workflow builder: it pulls in @xyflow/react and rjsf, which
 // would otherwise double the initial bundle for a route most sessions skip.
@@ -44,8 +44,9 @@ export default function App() {
   return (
     <>
     <Routes>
-      <Route path="/login"    element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      {/* No-login mode has no accounts: send stale /login links into the app. */}
+      <Route path="/login"    element={isNoAuth ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/register" element={isNoAuth ? <Navigate to="/" replace /> : <Register />} />
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/projects" replace />} />

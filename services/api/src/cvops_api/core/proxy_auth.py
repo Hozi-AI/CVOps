@@ -39,6 +39,13 @@ async def resolve_proxy_user(request: Request, session: AsyncSession) -> User:
     if not email:
         raise _unauthorized("Edge proxy supplied no user identity")
 
+    return await get_or_provision_user(session, email)
+
+
+async def get_or_provision_user(session: AsyncSession, email: str) -> User:
+    """Load the user by email, creating it with a personal org on first sight.
+
+    Shared by proxy mode and AUTH_MODE=none (the fixed dev user)."""
     user = await _get_user(session, email)
     if user is None:
         user = await _provision_user(session, email)
