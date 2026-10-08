@@ -35,6 +35,54 @@ Not gated: workers call the API directly (`/api/v1/internal/*`, `WORKER_TOKEN`),
 
 Keycloak admin console: `http://localhost:8081` (`admin` / `KEYCLOAK_ADMIN_PASSWORD`).
 
+## Sign in with Google / GitHub
+
+Keycloak can delegate login to Google and GitHub ("identity brokering"). Once a
+provider is enabled, the Keycloak login page shows a button for it next to the
+username/password form. nginx, oauth2-proxy, the API and the SPA are unchanged:
+they still only see the user's email. Both providers are off by default.
+
+Callback URL (use your `KEYCLOAK_PUBLIC_URL` if it isn't `http://localhost:8081`):
+
+| Provider | Callback URL |
+|---|---|
+| Google | `http://localhost:8081/realms/cvops/broker/google/endpoint` |
+| GitHub | `http://localhost:8081/realms/cvops/broker/github/endpoint` |
+
+**Google.** In the Google Cloud Console, open *APIs & Services → Credentials →
+Create credentials → OAuth client ID*. Choose *Web application* and add the
+callback URL under *Authorized redirect URIs*. If prompted, configure the
+consent screen first (*External*, and add yourself as a test user). Google
+accepts `http://localhost` but not a bare IP, so VM devs need a hostname.
+
+**GitHub.** Open *Settings → Developer settings → OAuth Apps → New OAuth App*.
+Set *Homepage URL* to `http://localhost` and *Authorization callback URL* to the
+callback URL, then generate a client secret.
+
+Then in `manifests/.env`:
+
+```bash
+GOOGLE_LOGIN_ENABLED=true
+GOOGLE_CLIENT_ID=<client id>
+GOOGLE_CLIENT_SECRET=<client secret>
+GITHUB_LOGIN_ENABLED=true
+GITHUB_CLIENT_ID=<client id>
+GITHUB_CLIENT_SECRET=<client secret>
+```
+
+Keycloak imports the realm only when its container is first created, so
+recreate it to apply the change. Keycloak runs on in-container dev storage, so
+this also resets its users and sessions. Your CVOps users and data live in
+Postgres and are kept.
+
+```bash
+cd manifests && docker compose -p cvops -f docker-compose.yml -f docker-compose.auth.yml up -d --force-recreate keycloak
+```
+
+**Who can sign in.** With social login on, anyone with a Google or GitHub
+account can log in and gets a personal org. Restrict it by email domain with
+`OAUTH2_PROXY_EMAIL_DOMAINS=yourcompany.com`.
+
 ## How the pieces fit
 
 | Piece | File | Role |

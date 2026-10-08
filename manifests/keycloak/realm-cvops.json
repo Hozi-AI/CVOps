@@ -35,6 +35,36 @@
       ]
     }
   ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": "${CVOPS_GOOGLE_IDP_ENABLED}",
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${CVOPS_GOOGLE_CLIENT_ID}",
+        "clientSecret": "${CVOPS_GOOGLE_CLIENT_SECRET}",
+        "defaultScope": "openid email profile",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "github",
+      "displayName": "GitHub",
+      "providerId": "github",
+      "enabled": "${CVOPS_GITHUB_IDP_ENABLED}",
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${CVOPS_GITHUB_CLIENT_ID}",
+        "clientSecret": "${CVOPS_GITHUB_CLIENT_SECRET}",
+        "defaultScope": "user:email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
   "users": [
     {
       "username": "alice",

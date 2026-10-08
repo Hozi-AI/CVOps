@@ -55,6 +55,15 @@ services:
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       CVOPS_EDGE_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?set OAUTH2_PROXY_CLIENT_SECRET in manifests/.env}
       CVOPS_SEED_USER_PASSWORD: ${KEYCLOAK_SEED_USER_PASSWORD:?set KEYCLOAK_SEED_USER_PASSWORD in manifests/.env}
+      # Social login (Keycloak identity brokering), each off until enabled in
+      # .env. The realm is imported only when Keycloak first starts, so recreate
+      # the container after changing these (see docs/edge-auth.md).
+      CVOPS_GOOGLE_IDP_ENABLED: ${GOOGLE_LOGIN_ENABLED:-false}
+      CVOPS_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-unset}
+      CVOPS_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-unset}
+      CVOPS_GITHUB_IDP_ENABLED: ${GITHUB_LOGIN_ENABLED:-false}
+      CVOPS_GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-unset}
+      CVOPS_GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-unset}
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro,z
 
@@ -83,7 +92,9 @@ services:
       # /oauth2/sign_out also ends the Keycloak SSO session, so logging out
       # actually logs out instead of silently signing straight back in.
       OAUTH2_PROXY_BACKEND_LOGOUT_URL: http://keycloak:8080/realms/cvops/protocol/openid-connect/logout?id_token_hint={id_token}
-      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      # With Google/GitHub on, anyone with such an account can sign in (and gets
+      # a personal org). Restrict to your domain(s), e.g. "example.com".
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?set OAUTH2_PROXY_COOKIE_SECRET in manifests/.env}
       # Plain-HTTP dev edge. Set to true once nginx terminates TLS.
       OAUTH2_PROXY_COOKIE_SECURE: ${OAUTH2_PROXY_COOKIE_SECURE:-false}
