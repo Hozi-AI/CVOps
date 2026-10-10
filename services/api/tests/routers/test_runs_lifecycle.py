@@ -394,7 +394,12 @@ async def test_resolve_gate_resumes(factory, fake_redis, echo_step) -> None:
     async with factory() as s:
         refreshed = await s.get(Run, gate.id)
         assert refreshed.status == "succeeded"
-        assert refreshed.output_refs == {"resolution": "approve"}
+        # The gate also carries annotation_revision_ids forward for the
+        # downstream commit step (empty here: no labeling job completed).
+        assert refreshed.output_refs == {
+            "resolution": "approve",
+            "annotation_revision_ids": [],
+        }
 
 
 async def test_resolve_gate_no_waiting_child_404(factory) -> None:
