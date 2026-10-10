@@ -1,0 +1,6 @@
+# Used only by the justfile (not by Tilt). Lets the host port for Redis be changed
+# with REDIS_HOST_PORT when 6379 is unavailable on the developer's machine.
+services:
+  redis:
+    ports: !override
+      - "${REDIS_HOST_PORT:-6379}:6379"
