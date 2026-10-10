@@ -73,7 +73,8 @@ async def find_orphan_step_runs(
             Run.created_at < cutoff,
         )
     )
-    return [(rid, stype) for rid, stype in rows.all()]
+    # step_type is nullable on the model, but in_(step_types) excludes NULLs.
+    return [(rid, stype) for rid, stype in rows.all() if stype is not None]
 
 
 async def enqueue_step(run_id: uuid.UUID, step_type: str, queue: str) -> None:

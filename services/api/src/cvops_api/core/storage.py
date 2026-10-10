@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import Any
 from abc import ABC, abstractmethod
 
 import boto3
@@ -114,7 +115,7 @@ class S3Backend(StorageBackend):
         self._verify_bucket()
         self._ensure_cors()
 
-    def _build_client(self, endpoint: str):
+    def _build_client(self, endpoint: str) -> Any:  # boto3 S3 client (untyped)
         return boto3.client(
             "s3",
             endpoint_url=endpoint,
@@ -124,7 +125,7 @@ class S3Backend(StorageBackend):
             config=self._cfg,
         )
 
-    def _presign_client_for(self, endpoint: str | None):
+    def _presign_client_for(self, endpoint: str | None) -> Any:
         """Pick the signing client. None / matching → the default presign client;
         otherwise a per-endpoint client cached for reuse."""
         if not endpoint or endpoint in (settings.S3_ENDPOINT, settings.S3_PUBLIC_ENDPOINT):

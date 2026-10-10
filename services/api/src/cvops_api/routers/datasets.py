@@ -809,7 +809,7 @@ async def commit_export_url(
     request: Request,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, Any]:
     """Return a presigned download URL for the most recent succeeded export of this commit."""
     from sqlalchemy import text as sa_text
 

@@ -59,11 +59,11 @@ def _public_endpoint(request: Request) -> str:
 )
 async def get_import_upload_url(
     project_id: uuid.UUID,
-    body: dict,
+    body: dict[str, Any],
     request: Request,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, Any]:
     """Return a presigned PUT URL for uploading a zip blob.
 
     Body: {"blob_hash": "sha256:..."}
