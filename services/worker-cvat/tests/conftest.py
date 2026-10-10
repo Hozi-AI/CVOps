@@ -115,7 +115,7 @@ async def seed_review(
             media_type="image/jpeg",
         )
         src = DataSource(project_id=proj.id, type="video")
-        ont = Ontology(project_id=proj.id, name=f"o-{_uid()}")
+        ont = Ontology(org_id=org.id, name=f"o-{_uid()}")  # ontologies are org-scoped
         s.add_all([blob, src, ont])
         await s.flush()
         proj.default_ontology_id = ont.id  # the project ontology pull falls back to

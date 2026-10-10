@@ -53,7 +53,7 @@ async def _seed(session_factory) -> dict:
             media_type="image/jpeg",
         )
         src = DataSource(project_id=proj.id, type="video")
-        ont = Ontology(project_id=proj.id, name=f"o-{_uid()}")
+        ont = Ontology(org_id=org.id, name=f"o-{_uid()}")  # ontologies are org-scoped
         s.add_all([blob, src, ont])
         await s.flush()
         sample = Sample(
