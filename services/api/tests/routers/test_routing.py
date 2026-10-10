@@ -11,7 +11,10 @@ from cvops_api.main import app
 
 
 def _paths() -> set[str]:
-    return {getattr(r, "path", "") for r in app.routes}
+    # Read the OpenAPI path table rather than app.routes: since FastAPI 0.14x,
+    # include_router() wraps routers lazily, so app.routes no longer lists
+    # their paths. The OpenAPI table is public API and version-independent.
+    return set(app.openapi()["paths"])
 
 
 def test_projects_not_double_prefixed() -> None:

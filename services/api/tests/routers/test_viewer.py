@@ -142,9 +142,7 @@ async def test_renders_frames(factory, fake_redis) -> None:
 
 
 async def test_thumbnail_fallback_to_blob(factory, fake_redis) -> None:
-    user, project, _ds, samples = await _seed_project(
-        factory, samples=1, with_thumbs=False
-    )
+    user, project, _ds, samples = await _seed_project(factory, samples=1, with_thumbs=False)
     tok = _token(user)
 
     async with _client(factory) as c:

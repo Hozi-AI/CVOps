@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from cvops_api.engine.step import StepContext
 from cvops_steps.model_runners import _registry, register_runner
@@ -36,7 +35,13 @@ class _FakeYoloRunner(ModelRunner):
     name = "yolo"
 
     async def predict(self, sample_id, blob_hash, modality, model_bytes, config, storage):
-        return [{"class_key": "car", "confidence": 0.9, "geometry": {"type": "bbox", "coords": [0.1, 0.2, 0.5, 0.6]}}]
+        return [
+            {
+                "class_key": "car",
+                "confidence": 0.9,
+                "geometry": {"type": "bbox", "coords": [0.1, 0.2, 0.5, 0.6]},
+            }
+        ]
 
 
 async def test_auto_label_writes_annotation_revisions():

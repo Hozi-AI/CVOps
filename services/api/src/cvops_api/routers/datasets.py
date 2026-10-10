@@ -129,7 +129,6 @@ async def get_dataset(
     return DatasetOut.model_validate(dataset)
 
 
-
 @router.delete("/datasets/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_dataset(
     id: uuid.UUID,
@@ -809,7 +808,7 @@ async def commit_export_url(
     request: Request,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, Any]:
     """Return a presigned download URL for the most recent succeeded export of this commit."""
     from sqlalchemy import text as sa_text
 
@@ -832,7 +831,9 @@ async def commit_export_url(
         )
     ).first()
     if row is None or not row[0]:
-        raise HTTPException(status_code=404, detail="No export found for this commit — run an export first")
+        raise HTTPException(
+            status_code=404, detail="No export found for this commit — run an export first"
+        )
 
     endpoint = public_s3_endpoint(request.url.hostname)
     url = await get_storage().get_presigned_get(row[0], endpoint=endpoint)

@@ -49,7 +49,9 @@ class Registry:
         from cvops_api.engine.step import Step  # noqa: PLC0415
 
         class _Placeholder(Step):
-            async def run(self, ctx, config, inputs):  # pragma: no cover
+            async def run(  # pragma: no cover
+                self, ctx: Any, config: dict[str, Any], inputs: dict[str, Any]
+            ) -> dict[str, Any]:
                 raise NotImplementedError
 
         placeholder = _Placeholder()

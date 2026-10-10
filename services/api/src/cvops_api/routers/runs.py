@@ -302,7 +302,10 @@ async def resolve_gate(
     lj = lj_row.first()
     annotation_revision_ids = list(lj[0]) if lj and lj[0] else []
 
-    child.output_refs = {"resolution": body.resolution, "annotation_revision_ids": annotation_revision_ids}
+    child.output_refs = {
+        "resolution": body.resolution,
+        "annotation_revision_ids": annotation_revision_ids,
+    }
     child.status = "succeeded"
     child.finished_at = datetime.now(UTC)
     await session.commit()

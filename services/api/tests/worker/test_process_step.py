@@ -107,11 +107,7 @@ async def test_process_step_success_then_advance(session, fake_redis, echo_step)
 
     # started + succeeded events recorded for the child.
     actions = (
-        (
-            await session.execute(
-                select(Event.action).where(Event.entity_id == child.id)
-            )
-        )
+        (await session.execute(select(Event.action).where(Event.entity_id == child.id)))
         .scalars()
         .all()
     )

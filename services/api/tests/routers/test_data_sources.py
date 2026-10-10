@@ -158,9 +158,7 @@ async def test_confirm_without_default_workflow_registers_blob(factory) -> None:
     user, project, ds = await _seed(factory, with_workflow=False)
 
     async with _client(factory, user) as c:
-        res = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A}
-        )
+        res = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A})
 
     assert res.status_code == 200
     body = res.json()
@@ -175,23 +173,15 @@ async def test_confirm_without_default_workflow_registers_blob(factory) -> None:
         assert blob.media_type == "video/mp4"
         # No workflow → no run dispatched (scope to this project; the
         # testcontainers DB is shared across the session).
-        runs = (
-            (await s.execute(select(Run).where(Run.project_id == project.id)))
-            .scalars()
-            .all()
-        )
+        runs = (await s.execute(select(Run).where(Run.project_id == project.id))).scalars().all()
         assert runs == []
 
 
-async def test_confirm_with_default_workflow_dispatches_run(
-    factory, fake_redis, echo_step
-) -> None:
+async def test_confirm_with_default_workflow_dispatches_run(factory, fake_redis, echo_step) -> None:
     user, _project, ds = await _seed(factory, with_workflow=True)
 
     async with _client(factory, user) as c:
-        res = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A}
-        )
+        res = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A})
 
     assert res.status_code == 200
     run_id = res.json()["run_id"]
@@ -205,11 +195,7 @@ async def test_confirm_with_default_workflow_dispatches_run(
         assert run.input_refs == {"params": {"source_id": str(ds.id)}}
 
         # advance_workflow created exactly one pending child step run.
-        children = (
-            (await s.execute(select(Run).where(Run.parent_run_id == run.id)))
-            .scalars()
-            .all()
-        )
+        children = (await s.execute(select(Run).where(Run.parent_run_id == run.id))).scalars().all()
         assert len(children) == 1
         child = children[0]
         assert child.kind == "step"
@@ -226,9 +212,7 @@ async def test_confirm_with_default_workflow_dispatches_run(
     }
 
 
-async def test_confirm_with_explicit_workflow_id_dispatches(
-    factory, fake_redis, echo_step
-) -> None:
+async def test_confirm_with_explicit_workflow_id_dispatches(factory, fake_redis, echo_step) -> None:
     # Project has no default ingest workflow; the client chooses one at upload
     # time by passing workflow_id.
     user, project, ds = await _seed(factory, with_workflow=False)
@@ -296,12 +280,8 @@ async def test_confirm_is_idempotent(factory, fake_redis, echo_step) -> None:
     user, project, ds = await _seed(factory, with_workflow=True)
 
     async with _client(factory, user) as c:
-        first = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A}
-        )
-        second = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A}
-        )
+        first = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A})
+        second = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A})
 
     assert first.status_code == second.status_code == 200
     assert first.json()["run_id"] is not None
@@ -312,9 +292,7 @@ async def test_confirm_is_idempotent(factory, fake_redis, echo_step) -> None:
         parents = (
             (
                 await s.execute(
-                    select(Run).where(
-                        Run.project_id == project.id, Run.kind == "workflow"
-                    )
+                    select(Run).where(Run.project_id == project.id, Run.kind == "workflow")
                 )
             )
             .scalars()
@@ -332,9 +310,7 @@ async def test_list_includes_latest_run_id(factory, fake_redis, echo_step) -> No
     user, project, ds = await _seed(factory, with_workflow=True)
 
     async with _client(factory, user) as c:
-        confirm = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A}
-        )
+        confirm = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A})
         run_id = confirm.json()["run_id"]
         assert run_id is not None
 
@@ -360,9 +336,7 @@ async def test_confirm_cross_org_returns_404(factory) -> None:
     other, _p2, _ds2 = await _seed(factory, with_workflow=False)
 
     async with _client(factory, other) as c:
-        res = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A}
-        )
+        res = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": _HASH_A})
 
     assert res.status_code == 404
 
@@ -451,13 +425,9 @@ async def test_confirm_duplicate_in_same_project_returns_409(factory) -> None:
 
     h = _unique_hash()
     async with _client(factory, user) as c:
-        r1 = await c.post(
-            f"/data-sources/{ds1.id}/confirm-upload", json={"blob_hash": h}
-        )
+        r1 = await c.post(f"/data-sources/{ds1.id}/confirm-upload", json={"blob_hash": h})
         # Same content, same project → blocked by uq_data_sources_project_blob.
-        r2 = await c.post(
-            f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": h}
-        )
+        r2 = await c.post(f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": h})
 
     assert r1.status_code == 200
     assert r2.status_code == 409
@@ -479,21 +449,13 @@ async def test_confirm_same_blob_different_projects_both_succeed(factory) -> Non
 
     h = _unique_hash()
     async with _client(factory, user) as c:
-        r1 = await c.post(
-            f"/data-sources/{ds1.id}/confirm-upload", json={"blob_hash": h}
-        )
-        r2 = await c.post(
-            f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": h}
-        )
+        r1 = await c.post(f"/data-sources/{ds1.id}/confirm-upload", json={"blob_hash": h})
+        r2 = await c.post(f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": h})
 
     assert r1.status_code == r2.status_code == 200
 
     async with factory() as s:
-        blobs = (
-            (await s.execute(select(Blob).where(Blob.hash == h)))
-            .scalars()
-            .all()
-        )
+        blobs = (await s.execute(select(Blob).where(Blob.hash == h))).scalars().all()
         assert len(blobs) == 1  # one Blob row despite two sources
 
 
@@ -515,17 +477,13 @@ async def test_confirm_reuses_preregistered_blob_without_upload(factory) -> None
         await s.commit()
 
     async with _client(factory, user) as c:
-        res = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": h}
-        )
+        res = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": h})
 
     assert res.status_code == 200
     assert res.json()["data_source"]["status"] == "uploaded"
 
     async with factory() as s:
-        blobs = (
-            (await s.execute(select(Blob).where(Blob.hash == h))).scalars().all()
-        )
+        blobs = (await s.execute(select(Blob).where(Blob.hash == h))).scalars().all()
         assert len(blobs) == 1  # unchanged — no second blob
 
 
@@ -548,9 +506,7 @@ async def test_check_match_in_current_project(factory) -> None:
     h = _unique_hash()
     async with _client(factory, user) as c:
         await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": h})
-        res = await c.post(
-            f"/projects/{project.id}/data-sources/check", json={"blob_hash": h}
-        )
+        res = await c.post(f"/projects/{project.id}/data-sources/check", json={"blob_hash": h})
     assert res.status_code == 200
     body = res.json()
     assert body["exists"] is True
@@ -576,9 +532,7 @@ async def test_check_match_in_other_project_same_org(factory) -> None:
     async with _client(factory, user) as c:
         await c.post(f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": h})
         # Probe from the *first* project — the match is in a sibling project.
-        res = await c.post(
-            f"/projects/{project.id}/data-sources/check", json={"blob_hash": h}
-        )
+        res = await c.post(f"/projects/{project.id}/data-sources/check", json={"blob_hash": h})
     assert res.status_code == 200
     body = res.json()
     assert body["exists"] is True
@@ -593,14 +547,10 @@ async def test_check_cross_org_not_visible(factory) -> None:
     other, _p2, other_ds = await _seed(factory, with_workflow=False)
     h = _unique_hash()
     async with _client(factory, other) as c:
-        await c.post(
-            f"/data-sources/{other_ds.id}/confirm-upload", json={"blob_hash": h}
-        )
+        await c.post(f"/data-sources/{other_ds.id}/confirm-upload", json={"blob_hash": h})
 
     async with _client(factory, user) as c:
-        res = await c.post(
-            f"/projects/{project.id}/data-sources/check", json={"blob_hash": h}
-        )
+        res = await c.post(f"/projects/{project.id}/data-sources/check", json={"blob_hash": h})
     assert res.status_code == 200
     body = res.json()
     assert body["exists"] is False
@@ -615,9 +565,7 @@ async def test_delete_is_soft_and_frees_reingest(factory) -> None:
     blob = _unique_hash()
 
     async with _client(factory, user) as c:
-        confirm = await c.post(
-            f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": blob}
-        )
+        confirm = await c.post(f"/data-sources/{ds.id}/confirm-upload", json={"blob_hash": blob})
         assert confirm.status_code == 200
 
         deleted = await c.delete(f"/data-sources/{ds.id}")
@@ -647,8 +595,6 @@ async def test_delete_is_soft_and_frees_reingest(factory) -> None:
         ds2_id = ds2.id
 
     async with _client(factory, user) as c:
-        reconfirm = await c.post(
-            f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": blob}
-        )
+        reconfirm = await c.post(f"/data-sources/{ds2_id}/confirm-upload", json={"blob_hash": blob})
     assert reconfirm.status_code == 200
     assert reconfirm.json()["data_source"]["status"] == "uploaded"

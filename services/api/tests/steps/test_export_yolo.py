@@ -135,7 +135,10 @@ async def _seed_commit(session: AsyncSession, backend: S3Backend) -> tuple[str, 
                 "VALUES (:i, :p, :s, :o, 1, 1, CAST(:pl AS jsonb), CAST(:pv AS jsonb))"
             ),
             {
-                "i": rid, "p": proj_id, "s": sid, "o": ont_id,
+                "i": rid,
+                "p": proj_id,
+                "s": sid,
+                "o": ont_id,
                 "pl": json.dumps(payload),
                 "pv": json.dumps({"source": "model", "review_status": "unreviewed"}),
             },
@@ -169,8 +172,12 @@ async def test_export_yolo_produces_valid_archive(session: AsyncSession) -> None
         proj_id, commit_id, placed = await _seed_commit(session, backend)
 
         ctx = StepContext(
-            session=session, storage=backend, project_id=proj_id,
-            run_id=str(uuid.uuid4()), actor_id=str(uuid.uuid4()), emit_event=_emit,
+            session=session,
+            storage=backend,
+            project_id=proj_id,
+            run_id=str(uuid.uuid4()),
+            actor_id=str(uuid.uuid4()),
+            emit_event=_emit,
         )
         result = await ExportYoloStep().run(ctx, {}, {"commit_id": commit_id})
         assert result["image_count"] == 3 and result["class_count"] == 2
@@ -196,8 +203,12 @@ async def test_export_yolo_is_deterministic(session: AsyncSession) -> None:
         backend = _mocked_backend()
         proj_id, commit_id, _ = await _seed_commit(session, backend)
         ctx = StepContext(
-            session=session, storage=backend, project_id=proj_id,
-            run_id=str(uuid.uuid4()), actor_id=str(uuid.uuid4()), emit_event=_emit,
+            session=session,
+            storage=backend,
+            project_id=proj_id,
+            run_id=str(uuid.uuid4()),
+            actor_id=str(uuid.uuid4()),
+            emit_event=_emit,
         )
         step = ExportYoloStep()
         first = await step.run(ctx, {}, {"commit_id": commit_id})

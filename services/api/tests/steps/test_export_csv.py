@@ -1,4 +1,5 @@
 """Unit tests for export_csv helpers."""
+
 from cvops_steps.export_csv import _merge_rows
 
 

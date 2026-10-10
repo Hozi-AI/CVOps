@@ -17,7 +17,13 @@ from cvops_api.db.models.projects import Project
 from cvops_api.db.models.versioning import Commit, Dataset
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
-from cvops_api.schemas.models import ModelArtifactCreate, ModelArtifactOut, ModelVersionCreate, ModelVersionOut, ModelVersionPatch
+from cvops_api.schemas.models import (
+    ModelArtifactCreate,
+    ModelArtifactOut,
+    ModelVersionCreate,
+    ModelVersionOut,
+    ModelVersionPatch,
+)
 
 router = APIRouter()
 

@@ -145,9 +145,7 @@ async def test_emit_event_writes_org_id(session: AsyncSession) -> None:
         org_id=org_id,
     )
     await session.flush()
-    row = (await session.execute(
-        _select(Event).where(Event.entity_id == entity_id)
-    )).scalar_one()
+    row = (await session.execute(_select(Event).where(Event.entity_id == entity_id))).scalar_one()
     assert row.org_id == org_id
 
 

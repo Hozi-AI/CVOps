@@ -249,7 +249,9 @@ async def test_cvat_annotate_accepts_form_params(factory) -> None:
     with respx.mock as mock:
         # Mock the deployer response
         mock.post(f"{cvat.DEPLOYER_URL}/annotate").mock(
-            return_value=httpx.Response(200, json={"task_id": 1, "job_id": 2, "cvat_url": "http://x"})
+            return_value=httpx.Response(
+                200, json={"task_id": 1, "job_id": 2, "cvat_url": "http://x"}
+            )
         )
         async with _client(factory, user) as c:
             res = await c.post(

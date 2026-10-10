@@ -208,9 +208,7 @@ async def _seed(
 # ---------------------------------------------------------------------------
 
 
-async def test_review_dispatches_human_review_run(
-    factory, fake_redis, human_review_step
-) -> None:
+async def test_review_dispatches_human_review_run(factory, fake_redis, human_review_step) -> None:
     user, project, dataset, pairs = await _seed(factory, with_commit=True)
     sample_ids = {str(sid) for sid, _ in pairs}
     revision_ids = {str(rid) for _, rid in pairs}
@@ -243,9 +241,7 @@ async def test_review_dispatches_human_review_run(
 
         # advance_workflow created only the gate step; commit is downstream.
         children = (
-            (await s.execute(select(Run).where(Run.parent_run_id == parent.id)))
-            .scalars()
-            .all()
+            (await s.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().all()
         )
         assert len(children) == 1
         child = children[0]
@@ -311,15 +307,11 @@ async def test_review_gate_resolution_enqueues_commit(
     assert await fake_redis.xlen("preprocessing") == 1
 
 
-async def test_review_omits_null_revision_ids(
-    factory, fake_redis, human_review_step
-) -> None:
+async def test_review_omits_null_revision_ids(factory, fake_redis, human_review_step) -> None:
     """Samples committed without a pre-label (annotation_revision_id NULL) must
     not stringify to "None" in the dispatched params — that later fails the
     uuid[] cast in human_review (regression: asyncpg DataError 'invalid UUID')."""
-    user, project, dataset, pairs = await _seed(
-        factory, with_commit=True, with_revisions=False
-    )
+    user, project, dataset, pairs = await _seed(factory, with_commit=True, with_revisions=False)
     sample_ids = {str(sid) for sid, _ in pairs}
 
     async with _client(factory, user) as c:
@@ -338,9 +330,7 @@ async def test_review_omits_null_revision_ids(
 async def test_review_requires_project_ontology(factory, fake_redis, human_review_step) -> None:
     """commit_dataset (and human_review) need the project ontology; review fails
     clearly at dispatch when there is none."""
-    user, _project, dataset, _pairs = await _seed(
-        factory, with_commit=True, with_ontology=False
-    )
+    user, _project, dataset, _pairs = await _seed(factory, with_commit=True, with_ontology=False)
 
     async with _client(factory, user) as c:
         res = await c.post(f"/datasets/{dataset.id}/review")

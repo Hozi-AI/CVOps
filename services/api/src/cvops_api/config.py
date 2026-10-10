@@ -1,12 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Known placeholder values that must never be used in production.
-_INSECURE_DEFAULTS: frozenset[str] = frozenset({
-    "change-me-in-production-min-32-chars",
-    "change-me-worker-token",
-    "GKchangeme",
-    "changeme",
-})
+_INSECURE_DEFAULTS: frozenset[str] = frozenset(
+    {
+        "change-me-in-production-min-32-chars",
+        "change-me-worker-token",
+        "GKchangeme",
+        "changeme",
+    }
+)
 
 
 class Settings(BaseSettings):
