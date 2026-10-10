@@ -1,3 +1,5 @@
+> **Archived 2026-10-10.** Superseded by [15 · Keycloak user management](../15-keycloak-user-management.md). Kept for history; do not treat as current.
+
 # CVOps — Authentication & User Management Design
 
 > **Decision:** Replace the hand-rolled JWT auth with **Keycloak** (self-hosted OIDC identity provider). FastAPI stops *issuing* tokens and instead *validates* tokens Keycloak issues. Keycloak federates with **Active Directory / LDAP**. CVOps keeps owning orgs/roles/tenancy.

@@ -1,3 +1,5 @@
+> **Archived 2026-10-10.** Superseded by the step implementations in [`packages/steps`](../../packages/steps/src/cvops_steps/) (`extract_frames.py`); the standalone CLI prototype was removed (commit c6c5b85). Kept for history; do not treat as current.
+
 # extract_frames.py
 
 **Step 1 of 3 in the YOLO workflow**

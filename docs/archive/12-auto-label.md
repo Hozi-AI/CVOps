@@ -1,6 +1,8 @@
+> **Archived 2026-10-10.** Superseded by the step implementations in [`packages/steps`](../../packages/steps/src/cvops_steps/) (`auto_label.py`); the standalone CLI prototype was removed (commit 64460d7). Kept for history; do not treat as current.
+
 # auto_label.py
 
-`> **This script is a legacy option and is no longer part of the active workflow.**
+> **This script is a legacy option and is no longer part of the active workflow.**
 > It is kept as a fallback for offline environments where CVAT is not available.
 > The current approach is to run auto-labeling directly inside CVAT using a deployed
 > Nuclio function — see [14-cvat-autolabel.md](14-cvat-autolabel.md).

@@ -1,3 +1,5 @@
+> **Archived 2026-10-10.** Superseded by the step implementations in [`packages/steps`](../../packages/steps/src/cvops_steps/) (`labeling_backends/` + `human_review.py`); the standalone CLI prototype was removed (commit 64460d7), CVAT sync is `worker-cvat`. Kept for history; do not treat as current.
+
 # upload_to_cvat.py
 
 **Step 3 of 3 in the YOLO workflow**
