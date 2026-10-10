@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from cvops_api.engine.step import StepContext
 from cvops_steps.model_runners import _registry, register_runner
