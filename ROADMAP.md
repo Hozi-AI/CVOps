@@ -33,7 +33,7 @@ frontend design [`docs/frontend-design-plan.md`](./docs/frontend-design-plan.md)
 
 The two-person split of this list (file ownership, sync points) is pinned as **#204**; phase 2 (Keycloak + frontend features) follows in **#208**.
 
-0. **Keep CI meaningful.** Code-side CI was restored on 2026-10-10 (#201, #202: pinned ruff/mypy, stale tests fixed). Still red for org-admin reasons: #203 (Claude review app, SonarQube).
+0. **Keep CI meaningful.** CI restored on 2026-10-10 (#201, #202: pinned ruff/mypy, stale tests fixed); the automated Claude review and SonarQube jobs were dropped (#203). `dev` is protected: `api`, `ruff + mypy (services/api)` and the frontend job are required, plus one approval.
 1. **Make workflows finish.** #182 training-queue steps never advance the parent · #183 `auto_label` not registered on worker-training. *(P0 — without these, train/auto-label pipelines are unusable.)*
 2. **Close the tenant and container holes.** #32 CVAT router cross-org · #33 + #84 idempotency reuse is cross-tenant (one migration) · #185 import reads arbitrary worker paths · #34 root containers + api `docker.sock`.
 3. **Stop corrupting data.** #184 auto_label writes xyxy boxes · #107 UI commit path ignores `by_source_group`.
@@ -52,7 +52,7 @@ The two-person split of this list (file ownership, sync points) is pinned as **#
 | [EPIC-2 Frontend features](https://github.com/Hozi-AI/CVOps/milestone/2) | #149, #52 ontology lifecycle, #148 sortable samples, #57, #58 logs (+API), #56, #55 refs UI, #53 commit DAG, #60 model compare, #62, #199, #196, #197 |
 | [EPIC-3 Frontend quality](https://github.com/Hozi-AI/CVOps/milestone/3) | #64 UI primitives (blocks #56, #60), #113 error states, #66 page tests, #65 a11y, #68 validation, #69 code-split |
 | [EPIC-11 Auth & Keycloak](https://github.com/Hozi-AI/CVOps/milestone/11) | epic #164: #165 → #166 → #167 + #168 → #169 → #170; then #72 RBAC, #61 members UI, #71 worker auth |
-| [EPIC-7 CI / CD](https://github.com/Hozi-AI/CVOps/milestone/7) | #203 review app + Sonar, #92 pre-commit → ruff/tsc, #93 e2e, #94 worker lint, #95 image pipeline |
+| [EPIC-7 CI / CD](https://github.com/Hozi-AI/CVOps/milestone/7) | #92 pre-commit → ruff/tsc, #93 e2e, #94 worker lint, #95 image pipeline |
 | [EPIC-6 Infra](https://github.com/Hozi-AI/CVOps/milestone/6) | #87 vendor CVAT config, #89 `.dockerignore`, #90 Dockerfiles, #193 Tilt watch, #194 stray migration |
 | [EPIC-8 Observability](https://github.com/Hozi-AI/CVOps/milestone/8) | #96 structured logs → #97 correlation ids → #99 tracing, #100 error tracking |
 
