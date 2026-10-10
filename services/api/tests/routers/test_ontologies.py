@@ -75,6 +75,7 @@ async def test_list_excludes_soft_deleted(factory) -> None:
         s.add_all([ont, dead])
         await s.flush()
         from datetime import UTC, datetime
+
         dead.deleted_at = datetime.now(UTC)
         await s.commit()
 

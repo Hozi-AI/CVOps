@@ -1,4 +1,5 @@
 """Tests for step.parse_sensor."""
+
 from __future__ import annotations
 import json
 import uuid
@@ -50,7 +51,11 @@ def _make_ctx(blob_bytes: bytes):
     session.execute.side_effect = [
         MagicMock(first=MagicMock(return_value=source_row)),
         MagicMock(),  # UPDATE ingesting
-        MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
         MagicMock(),  # UPDATE ready
     ]
 

@@ -83,6 +83,7 @@ def fake_cvat_client():
         # Register the CVAT backend so get_backend("cvat") resolves during tests
         from cvops_steps.labeling_backends import register_backend, _registry
         from cvops_steps.labeling_backends.cvat import CvatLabelingBackend
+
         register_backend(CvatLabelingBackend())
         yield calls
         _registry.pop("cvat", None)  # clean up so tests don't bleed state

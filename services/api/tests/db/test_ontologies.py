@@ -103,10 +103,14 @@ async def test_label_class_unique_class_key(session: AsyncSession):
     ont = await make_ontology(session)
     shared_key = "vehicle.car"
 
-    session.add(LabelClass(ontology_id=ont.id, class_key=shared_key, display_name="Car", sort_order=0))
+    session.add(
+        LabelClass(ontology_id=ont.id, class_key=shared_key, display_name="Car", sort_order=0)
+    )
     await session.flush()
 
-    session.add(LabelClass(ontology_id=ont.id, class_key=shared_key, display_name="Car Dup", sort_order=1))
+    session.add(
+        LabelClass(ontology_id=ont.id, class_key=shared_key, display_name="Car Dup", sort_order=1)
+    )
     with pytest.raises(IntegrityError):
         await session.flush()
     await session.rollback()
@@ -115,10 +119,16 @@ async def test_label_class_unique_class_key(session: AsyncSession):
 async def test_label_class_unique_sort_order(session: AsyncSession):
     ont = await make_ontology(session)
 
-    session.add(LabelClass(ontology_id=ont.id, class_key="vehicle.car", display_name="Car", sort_order=0))
+    session.add(
+        LabelClass(ontology_id=ont.id, class_key="vehicle.car", display_name="Car", sort_order=0)
+    )
     await session.flush()
 
-    session.add(LabelClass(ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=0))
+    session.add(
+        LabelClass(
+            ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=0
+        )
+    )
     with pytest.raises(IntegrityError):
         await session.flush()
     await session.rollback()
@@ -144,7 +154,9 @@ async def test_label_class_sort_order_invariant(session: AsyncSession):
 
     lc0 = LabelClass(ontology_id=ont.id, class_key="person", display_name="Person", sort_order=0)
     lc1 = LabelClass(ontology_id=ont.id, class_key="vehicle.car", display_name="Car", sort_order=1)
-    lc2 = LabelClass(ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=2)
+    lc2 = LabelClass(
+        ontology_id=ont.id, class_key="vehicle.truck", display_name="Truck", sort_order=2
+    )
     session.add_all([lc0, lc1, lc2])
     await session.flush()
 

@@ -95,8 +95,12 @@ async def test_train_registers_weights_blob_and_writes_model_version(
         (weights_dir / "best.pt").write_bytes(b"fake-weights-payload")
 
         ctx = StepContext(
-            session=session, storage=backend, project_id=proj_id,
-            run_id=str(uuid.uuid4()), actor_id=str(uuid.uuid4()), emit_event=_emit,
+            session=session,
+            storage=backend,
+            project_id=proj_id,
+            run_id=str(uuid.uuid4()),
+            actor_id=str(uuid.uuid4()),
+            emit_event=_emit,
         )
 
         blob_hash = await _upload_weights(ctx, output_dir, "/output/weights/")
@@ -118,7 +122,10 @@ async def test_train_registers_weights_blob_and_writes_model_version(
 
         # ModelVersion insert resolves fk_model_versions_blob_hash (the regression).
         mv_id = await _write_model_version(
-            ctx, None, commit_id, blob_hash,
+            ctx,
+            None,
+            commit_id,
+            blob_hash,
             {"map50_95": 0.06, "mlflow_run_id": "abc123"},
             {"epochs": 1, "seed": 7},
         )

@@ -158,9 +158,7 @@ async def test_promote_upload_copies_to_blob_key() -> None:
                 ContentType="video/mp4",
             )
 
-            size_bytes, media_type, storage_key = await backend.promote_upload(
-                "ds-1", blob_hash
-            )
+            size_bytes, media_type, storage_key = await backend.promote_upload("ds-1", blob_hash)
 
             assert size_bytes == len(payload)
             assert media_type == "video/mp4"
@@ -174,9 +172,7 @@ async def test_presigned_url_uses_public_endpoint() -> None:
     not the internal S3_ENDPOINT."""
     with mock_aws():
         a, b, c, d, e = _moto_settings()
-        with a, b, c, d, e, patch.object(
-            settings, "S3_PUBLIC_ENDPOINT", "http://public-host:3900"
-        ):
+        with a, b, c, d, e, patch.object(settings, "S3_PUBLIC_ENDPOINT", "http://public-host:3900"):
             backend = _mocked_backend()
             put_url = await backend.get_presigned_put_for_upload("ds-1")
             get_url = await backend.get_presigned_get("sha256:" + "a" * 64)
@@ -202,8 +198,9 @@ async def test_presigned_url_honors_per_request_endpoint() -> None:
 def test_public_s3_endpoint_helper() -> None:
     from cvops_api.core.storage import public_s3_endpoint
 
-    with patch.object(settings, "S3_PUBLIC_ENDPOINT", ""), patch.object(
-        settings, "S3_PUBLIC_PORT", 3900
+    with (
+        patch.object(settings, "S3_PUBLIC_ENDPOINT", ""),
+        patch.object(settings, "S3_PUBLIC_PORT", 3900),
     ):
         assert public_s3_endpoint("dev-vm") == "http://dev-vm:3900"
         assert public_s3_endpoint(None) is None

@@ -4,6 +4,7 @@ Accepts a zip blob (uploaded via /imports/upload-url) or a server-side folder
 path and dispatches an inline import_dataset → [human_review?] → commit_dataset
 DAG, exactly like the ad-hoc train endpoint in datasets.py.
 """
+
 from __future__ import annotations
 
 import os
@@ -73,9 +74,7 @@ async def get_import_upload_url(
     blob_hash = body.get("blob_hash", "")
     if not blob_hash.startswith("sha256:"):
         raise HTTPException(status_code=422, detail="blob_hash must start with 'sha256:'")
-    url = await get_storage().get_presigned_put(
-        blob_hash, endpoint=_public_endpoint(request)
-    )
+    url = await get_storage().get_presigned_put(blob_hash, endpoint=_public_endpoint(request))
     return {"upload_url": url}
 
 

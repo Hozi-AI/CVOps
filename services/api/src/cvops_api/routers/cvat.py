@@ -31,6 +31,7 @@ async def _get_model_version(mv_id: uuid.UUID, user: User, session: AsyncSession
 
 # ── Deploy a stored model to CVAT ────────────────────────────────────────────
 
+
 @router.post("/models/{id}/cvat-deploy")
 async def cvat_deploy_model(
     id: uuid.UUID,
@@ -53,7 +54,9 @@ async def cvat_deploy_model(
                 f"{DEPLOYER_URL}/deploy",
                 headers=_DEPLOYER_HEADERS,
                 data={"model_name": model_name},
-                files={"file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")},
+                files={
+                    "file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")
+                },
                 timeout=300,
             )
     except httpx.ConnectError:
@@ -66,6 +69,7 @@ async def cvat_deploy_model(
 
 
 # ── List models available in CVAT ─────────────────────────────────────────────
+
 
 @router.get("/cvat/models")
 async def list_cvat_models(
@@ -83,6 +87,7 @@ async def list_cvat_models(
 
 
 # ── Upload a .pt file and deploy it to CVAT ───────────────────────────────────
+
 
 @router.post("/cvat/deploy")
 async def cvat_deploy_file(
@@ -109,6 +114,7 @@ async def cvat_deploy_file(
 
 # ── Delete a deployed model from CVAT ────────────────────────────────────────
 
+
 @router.delete("/cvat/models/{function_id}")
 async def cvat_delete_model(
     function_id: str,
@@ -117,7 +123,9 @@ async def cvat_delete_model(
     """Remove a Nuclio function from CVAT."""
     try:
         async with httpx.AsyncClient(timeout=30) as http:
-            resp = await http.delete(f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS)
+            resp = await http.delete(
+                f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS
+            )
     except httpx.ConnectError:
         raise HTTPException(503, "CVAT deployer is not available")
     if resp.status_code != 200:
@@ -126,6 +134,7 @@ async def cvat_delete_model(
 
 
 # ── Trigger auto-annotation ───────────────────────────────────────────────────
+
 
 @router.post("/projects/{project_id}/cvat-annotate")
 async def cvat_annotate(
@@ -143,8 +152,7 @@ async def cvat_annotate(
         "threshold": str(threshold),
     }
     upload_files = [
-        ("files", (f.filename, await f.read(), f.content_type or "image/jpeg"))
-        for f in files
+        ("files", (f.filename, await f.read(), f.content_type or "image/jpeg")) for f in files
     ]
 
     try:

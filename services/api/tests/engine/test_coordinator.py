@@ -60,9 +60,7 @@ async def _seed_parent(session, definition: dict) -> tuple[Run, str]:
     return parent, source_id
 
 
-async def test_advance_creates_pending_child_and_enqueues(
-    session, fake_redis, echo_step
-) -> None:
+async def test_advance_creates_pending_child_and_enqueues(session, fake_redis, echo_step) -> None:
     parent, source_id = await _seed_parent(session, _SINGLE_STEP_DEF)
     actor = uuid.uuid4()
 
@@ -70,9 +68,7 @@ async def test_advance_creates_pending_child_and_enqueues(
 
     # One child step run, pending, with frozen resolved inputs.
     children = (
-        (await session.execute(select(Run).where(Run.parent_run_id == parent.id)))
-        .scalars()
-        .all()
+        (await session.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().all()
     )
     assert len(children) == 1
     child = children[0]
@@ -97,17 +93,13 @@ async def test_advance_creates_pending_child_and_enqueues(
     }
 
 
-async def test_advance_finalizes_parent_when_step_succeeds(
-    session, fake_redis, echo_step
-) -> None:
+async def test_advance_finalizes_parent_when_step_succeeds(session, fake_redis, echo_step) -> None:
     parent, _ = await _seed_parent(session, _SINGLE_STEP_DEF)
     actor = uuid.uuid4()
     await advance_workflow(session, parent.id, actor)
 
     child = (
-        (await session.execute(select(Run).where(Run.parent_run_id == parent.id)))
-        .scalars()
-        .one()
+        (await session.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().one()
     )
     # Simulate the worker finishing the step.
     child.status = "succeeded"
@@ -123,9 +115,7 @@ async def test_advance_finalizes_parent_when_step_succeeds(
     assert await fake_redis.xlen(STREAM) == 1
 
 
-async def test_advance_reuses_prior_succeeded_run(
-    session, fake_redis, echo_step
-) -> None:
+async def test_advance_reuses_prior_succeeded_run(session, fake_redis, echo_step) -> None:
     parent, source_id = await _seed_parent(session, _SINGLE_STEP_DEF)
     actor = uuid.uuid4()
 
@@ -146,11 +136,7 @@ async def test_advance_reuses_prior_succeeded_run(
     await advance_workflow(session, parent.id, actor)
 
     child = (
-        (await session.execute(
-            select(Run).where(Run.parent_run_id == parent.id)
-        ))
-        .scalars()
-        .one()
+        (await session.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().one()
     )
     # Reused: child is born succeeded with the prior outputs, nothing enqueued.
     assert child.status == "succeeded"
@@ -192,9 +178,7 @@ async def test_advance_reuses_when_multiple_prior_succeeded_runs(
     await advance_workflow(session, parent.id, actor)
 
     child = (
-        (await session.execute(select(Run).where(Run.parent_run_id == parent.id)))
-        .scalars()
-        .one()
+        (await session.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().one()
     )
     # Most recent prior (by finished_at) wins; nothing enqueued.
     assert child.status == "succeeded"
@@ -202,9 +186,7 @@ async def test_advance_reuses_when_multiple_prior_succeeded_runs(
     assert await fake_redis.xlen(STREAM) == 0
 
 
-async def test_advance_adhoc_run_uses_inline_definition(
-    session, fake_redis, echo_step
-) -> None:
+async def test_advance_adhoc_run_uses_inline_definition(session, fake_redis, echo_step) -> None:
     """An ad-hoc run (workflow_id=None) sources its DAG from config.definition
     rather than a saved Workflow, and advances exactly like one."""
     suffix = uuid.uuid4().hex[:8]
@@ -231,9 +213,7 @@ async def test_advance_adhoc_run_uses_inline_definition(
     await advance_workflow(session, parent.id, actor)
 
     child = (
-        (await session.execute(select(Run).where(Run.parent_run_id == parent.id)))
-        .scalars()
-        .one()
+        (await session.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().one()
     )
     assert child.workflow_id is None
     assert child.step_type == "test.echo"

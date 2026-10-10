@@ -130,9 +130,7 @@ async def advance_workflow(
             await session.commit()
             return
     else:
-        wf_result = await session.execute(
-            select(Workflow).where(Workflow.id == parent.workflow_id)
-        )
+        wf_result = await session.execute(select(Workflow).where(Workflow.id == parent.workflow_id))
         workflow = wf_result.scalar_one_or_none()
         if workflow is None:
             await _fail(session, parent, actor_id, "Workflow definition not found", org_id=org_id)
@@ -200,7 +198,9 @@ async def advance_workflow(
         try:
             registry.validate_config(type_key, config)
         except Exception as exc:  # noqa: BLE001
-            await _fail(session, parent, actor_id, f"Step '{step_id}' config invalid: {exc}", org_id=org_id)
+            await _fail(
+                session, parent, actor_id, f"Step '{step_id}' config invalid: {exc}", org_id=org_id
+            )
             await session.commit()
             return
 
@@ -208,7 +208,9 @@ async def advance_workflow(
         try:
             reg = registry.resolve(type_key)
         except KeyError:
-            await _fail(session, parent, actor_id, f"Unknown step type: {type_key!r}", org_id=org_id)
+            await _fail(
+                session, parent, actor_id, f"Unknown step type: {type_key!r}", org_id=org_id
+            )
             await session.commit()
             return
         step_impl = reg.impl
@@ -225,7 +227,13 @@ async def advance_workflow(
                 # receives source_id etc. instead of KeyError-ing on empty inputs.
                 resolved = dict(run_params)
         except ResolutionError as exc:
-            await _fail(session, parent, actor_id, f"Step '{step_id}' input resolution: {exc}", org_id=org_id)
+            await _fail(
+                session,
+                parent,
+                actor_id,
+                f"Step '{step_id}' input resolution: {exc}",
+                org_id=org_id,
+            )
             await session.commit()
             return
 
@@ -350,7 +358,9 @@ async def process_step(
         reg = registry.resolve(type_key)
     except KeyError:
         if parent is not None:
-            await _fail_child(session, child, parent, actor_id, f"Unknown step type: {type_key!r}", org_id=org_id)
+            await _fail_child(
+                session, child, parent, actor_id, f"Unknown step type: {type_key!r}", org_id=org_id
+            )
         else:
             child.status = "failed"
             child.error = f"Unknown step type: {type_key!r}"

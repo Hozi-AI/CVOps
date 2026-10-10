@@ -38,7 +38,9 @@ async def test_find_orphans_selects_only_stale_pending_in_set(session) -> None:
 
     stale = await _make_run(session, project.id, step_type="step.extract_frames", status="pending")
     recent = await _make_run(session, project.id, step_type="step.extract_frames", status="pending")
-    running = await _make_run(session, project.id, step_type="step.extract_frames", status="running")
+    running = await _make_run(
+        session, project.id, step_type="step.extract_frames", status="running"
+    )
     other_queue = await _make_run(session, project.id, step_type="step.train", status="pending")
 
     # Backdate the stale row's created_at past the recovery threshold.
@@ -55,8 +57,8 @@ async def test_find_orphans_selects_only_stale_pending_in_set(session) -> None:
     ids = {rid for rid, _ in orphans}
 
     assert stale.id in ids
-    assert recent.id not in ids       # too young
-    assert running.id not in ids      # not pending
+    assert recent.id not in ids  # too young
+    assert running.id not in ids  # not pending
     assert other_queue.id not in ids  # step_type not in this worker's set
 
 

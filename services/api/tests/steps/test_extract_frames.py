@@ -49,9 +49,7 @@ def _make_test_video() -> bytes:
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         tmp_path = tmp.name
 
-    writer = cv2.VideoWriter(
-        tmp_path, cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (64, 64)
-    )
+    writer = cv2.VideoWriter(tmp_path, cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (64, 64))
     for i in range(20):
         frame = np.zeros((64, 64, 3), dtype=np.uint8)
         frame[:, :, i % 3] = min(255, 50 + i * 10)
@@ -175,9 +173,7 @@ async def test_extract_frames_marks_source_failed(session: AsyncSession) -> None
     )
 
     with pytest.raises(ValueError):
-        await ExtractFramesStep().run(
-            ctx, {"interval_seconds": 1.0}, {"source_id": str(ds_id)}
-        )
+        await ExtractFramesStep().run(ctx, {"interval_seconds": 1.0}, {"source_id": str(ds_id)})
 
     status = (
         await session.execute(

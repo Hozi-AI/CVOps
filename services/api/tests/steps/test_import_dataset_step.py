@@ -4,6 +4,7 @@ Seeds org/project/ontology in testcontainers Postgres. Builds a synthetic YOLO
 dataset zip in memory, stores it in moto S3, then runs the step end-to-end.
 Asserts samples and annotation_revisions rows are created correctly.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -57,15 +58,23 @@ def _make_yolo_zip() -> tuple[bytes, str]:
 async def _seed(session: AsyncSession) -> tuple[str, str, str]:
     """Create org/project/ontology with 'cat' label class. Returns (project_id, ontology_id, cls_id)."""
     org_id, proj_id, ont_id, cls_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    await session.execute(text("INSERT INTO orgs (id, name) VALUES (:i, :n)"),
-                          {"i": org_id, "n": f"org-{uuid.uuid4().hex[:6]}"})
-    await session.execute(text("INSERT INTO projects (id, org_id, name) VALUES (:i, :o, :n)"),
-                          {"i": proj_id, "o": org_id, "n": "proj"})
-    await session.execute(text("INSERT INTO ontologies (id, org_id, name, version) VALUES (:i, :o, 'o', 1)"),
-                          {"i": ont_id, "o": org_id})
     await session.execute(
-        text("INSERT INTO label_classes (id, ontology_id, class_key, display_name, sort_order) "
-             "VALUES (:i, :o, 'cat', 'Cat', 0)"),
+        text("INSERT INTO orgs (id, name) VALUES (:i, :n)"),
+        {"i": org_id, "n": f"org-{uuid.uuid4().hex[:6]}"},
+    )
+    await session.execute(
+        text("INSERT INTO projects (id, org_id, name) VALUES (:i, :o, :n)"),
+        {"i": proj_id, "o": org_id, "n": "proj"},
+    )
+    await session.execute(
+        text("INSERT INTO ontologies (id, org_id, name, version) VALUES (:i, :o, 'o', 1)"),
+        {"i": ont_id, "o": org_id},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO label_classes (id, ontology_id, class_key, display_name, sort_order) "
+            "VALUES (:i, :o, 'cat', 'Cat', 0)"
+        ),
         {"i": cls_id, "o": ont_id},
     )
     await session.flush()
@@ -83,6 +92,7 @@ async def test_import_yolo_zip_creates_sample_and_revision(session: AsyncSession
     s1, s2, s3, s4, s5, s6 = _moto_settings()
     with mock_aws(), s1, s2, s3, s4, s5, s6:
         import boto3
+
         boto3.client("s3").create_bucket(Bucket=settings.S3_BUCKET)
         backend = S3Backend()
         stored_hash = await backend.save_bytes(zip_data, "application/zip")
@@ -105,17 +115,23 @@ async def test_import_yolo_zip_creates_sample_and_revision(session: AsyncSession
     assert len(result["sample_ids"]) == 1
     assert len(result["annotation_revision_ids"]) == 1
 
-    sample = (await session.execute(
-        text("SELECT id FROM samples WHERE project_id = CAST(:p AS uuid)"),
-        {"p": proj_id},
-    )).first()
+    sample = (
+        await session.execute(
+            text("SELECT id FROM samples WHERE project_id = CAST(:p AS uuid)"),
+            {"p": proj_id},
+        )
+    ).first()
     assert sample is not None
 
-    rev = (await session.execute(
-        text("SELECT payload, provenance FROM annotation_revisions "
-             "WHERE sample_id = CAST(:s AS uuid)"),
-        {"s": sample[0]},
-    )).first()
+    rev = (
+        await session.execute(
+            text(
+                "SELECT payload, provenance FROM annotation_revisions "
+                "WHERE sample_id = CAST(:s AS uuid)"
+            ),
+            {"s": sample[0]},
+        )
+    ).first()
     assert rev is not None
     payload = rev[0] if isinstance(rev[0], list) else json.loads(rev[0])
     assert payload[0]["class_key"] == "cat"
@@ -130,6 +146,7 @@ async def test_import_no_ontology_skips_revisions(session: AsyncSession) -> None
     s1, s2, s3, s4, s5, s6 = _moto_settings()
     with mock_aws(), s1, s2, s3, s4, s5, s6:
         import boto3
+
         boto3.client("s3").create_bucket(Bucket=settings.S3_BUCKET)
         backend = S3Backend()
         await backend.save_bytes(zip_data, "application/zip")

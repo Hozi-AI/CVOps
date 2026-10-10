@@ -57,9 +57,7 @@ class StorageBackend(ABC):
         """
 
     @abstractmethod
-    async def promote_upload(
-        self, upload_id: str, blob_hash: str
-    ) -> tuple[int, str, str]:
+    async def promote_upload(self, upload_id: str, blob_hash: str) -> tuple[int, str, str]:
         """Move a finished `uploads/{id}` object to its content-addressed
         `blobs/{hash}` location via a server-side copy (bytes never transit the
         API). Idempotent: skips the copy if the blob key already exists.
@@ -184,9 +182,7 @@ class S3Backend(StorageBackend):
         blob_hash = self._sha256(data)
         key = self._bucket_key(blob_hash)
         if not self._exists(key):
-            self._client.put_object(
-                Bucket=self._bucket, Key=key, Body=data, ContentType=media_type
-            )
+            self._client.put_object(Bucket=self._bucket, Key=key, Body=data, ContentType=media_type)
         return blob_hash
 
     async def get_presigned_get(
@@ -222,9 +218,7 @@ class S3Backend(StorageBackend):
             )
         )
 
-    async def promote_upload(
-        self, upload_id: str, blob_hash: str
-    ) -> tuple[int, str, str]:
+    async def promote_upload(self, upload_id: str, blob_hash: str) -> tuple[int, str, str]:
         src_key = f"uploads/{upload_id}"
         dst_key = self._bucket_key(blob_hash)
         head = self._client.head_object(Bucket=self._bucket, Key=src_key)
@@ -241,15 +235,11 @@ class S3Backend(StorageBackend):
         return size_bytes, media_type, dst_key
 
     async def get_bytes(self, blob_hash: str) -> bytes:
-        resp = self._client.get_object(
-            Bucket=self._bucket, Key=self._bucket_key(blob_hash)
-        )
+        resp = self._client.get_object(Bucket=self._bucket, Key=self._bucket_key(blob_hash))
         return resp["Body"].read()  # type: ignore[no-any-return]
 
     async def delete_blob(self, blob_hash: str) -> None:
-        self._client.delete_object(
-            Bucket=self._bucket, Key=self._bucket_key(blob_hash)
-        )
+        self._client.delete_object(Bucket=self._bucket, Key=self._bucket_key(blob_hash))
 
 
 _storage: StorageBackend | None = None
