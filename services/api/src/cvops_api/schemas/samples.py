@@ -30,6 +30,7 @@ class SampleOut(BaseModel):
     width: int
     height: int
     frame_index: int | None = None
+    modality: str = "image"
     perceptual_hash: str | None = None
     # Reads the ORM's `metadata_` attribute but serializes as the clean `metadata`
     # (matches the frontend Sample type and avoids leaking the trailing underscore).
