@@ -19,8 +19,8 @@ RS256 tokens against Keycloak's JWKS and JIT-mirrors identities locally.
 
 - **#72 RBAC** — roles come from Keycloak (group/realm roles → `owner`/`editor`/`viewer`), enforced by a real `core/rbac.py` dependency reading token claims.
 - **#61 Org members UI** — invite/role management becomes KC group membership; UI either calls KC Admin API via a thin API proxy or KC Account console.
-- **#68 login/register validation** — the custom login/register forms go away (KC-hosted login); registration becomes a KC flow.
-- **#30 `/internal/*` auth** — worker auth moves to a KC **service account** (client-credentials) *or* stays on `WORKER_TOKEN`; either way `verify_worker` is added. (Independent of KC; flagged here because it lives in the same auth surface.)
+- **Login/register form validation** — the custom login/register forms go away (KC-hosted login); registration becomes a KC flow. (#68 is train-hyperparam/metadata form validation and is *not* resolved by this.)
+- **#71 `/internal/*` auth** — worker auth moves to a KC **service account** (client-credentials) *or* stays on `WORKER_TOKEN`; either way `verify_worker` is added. (Independent of KC; flagged here because it lives in the same auth surface.)
 
 ---
 
@@ -92,7 +92,7 @@ Add (and remove the HS256-specific ones once cut over):
 - `KEYCLOAK_API_AUDIENCE=cvops-api`, `KEYCLOAK_ISSUER` (derived)
 - `KEYCLOAK_JWKS_URL` (derived), JWKS cache TTL
 - `OIDC_CLIENT_ID=cvops-frontend` (frontend build env: `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID`)
-- Keep `WORKER_TOKEN` OR add `cvops-worker` client creds — decide with #30.
+- Keep `WORKER_TOKEN` OR add `cvops-worker` client creds — decide with #71.
 - Deprecate/remove: `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS`.
 
 ---
@@ -105,7 +105,7 @@ Add (and remove the HS256-specific ones once cut over):
 - `api/auth.ts`: `login()` → `keycloak.login()`; `logout()` → `keycloak.logout()`;
   `register()` → KC registration URL; `useMe()` reads from `/auth/me` (still served
   by API from the mirror) or from KC userinfo.
-- `pages/Login.tsx`: becomes a redirect/guard, not a credential form (resolves #68's login/register concern by removing the form).
+- `pages/Login.tsx`: becomes a redirect/guard, not a credential form (removes the login/register form entirely).
 - Route guard: redirect unauthenticated → KC; handle the redirect callback.
 
 ## API endpoint changes (`routers/auth.py`)
@@ -134,7 +134,7 @@ directly. Two options:
 2. KC testcontainer — heavy, slow; reserve for one end-to-end smoke test.
 
 Update `tests/routers/test_auth.py` + the auth helper fixtures to the RS256/claims
-model; add RBAC tests (#72) and `/internal` auth tests (#30, #76).
+model; add RBAC tests (#72) and `/internal` auth tests (#71, #76).
 
 ---
 
@@ -145,13 +145,13 @@ model; add RBAC tests (#72) and `/internal` auth tests (#30, #76).
 3. **Cut over endpoints** — remove `/register|/token|/refresh|/revoke`; `/me` from mirror; drop Redis blacklist + HS256 config. *(Refactor)*
 4. **Frontend** — keycloak-js adapter, redirect login, client.ts rewrite. *(Feat)*
 5. **RBAC (#72)** — implement + enforce + tests. *(Feat)*
-6. **Worker / internal (#30)** — service-account or `verify_worker`; typed CVAT webhook schema. *(Fix/Security)*
+6. **Worker / internal (#71)** — service-account or `verify_worker`; typed CVAT webhook schema. *(Fix/Security)*
 7. **Members UI (#61)** — invite/role via KC groups (API proxy to KC Admin API, or Account console link). *(Feat)*
 8. **Docs** — update `services/api/CLAUDE.md` §3 Auth, root `CLAUDE.md` auth/arch, README API table; this file. *(Docs)*
 
 ## Open questions / risks
 
-- **`/internal/*` auth** (#30): KC service-account vs keep `WORKER_TOKEN`. Service-account is cleaner long-term but adds a confidential client + token fetch to the worker. Recommend keeping `WORKER_TOKEN` for the worker doorbell and just adding `verify_worker`; revisit.
+- **`/internal/*` auth** (#71): KC service-account vs keep `WORKER_TOKEN`. Service-account is cleaner long-term but adds a confidential client + token fetch to the worker. Recommend keeping `WORKER_TOKEN` for the worker doorbell and just adding `verify_worker`; revisit.
 - **Admin API surface for members UI** (#61): exposing KC group management through our API needs a confidential admin client — scope carefully (owner-only).
 - **Migration column**: app FKs target `users.id` (our UUID). Keep our UUID as PK; store `kc_sub` as a unique secondary key. Do **not** repoint FKs at `kc_sub`.
 - **Greenfield assumption**: existing dev users are discarded; communicate the reset.

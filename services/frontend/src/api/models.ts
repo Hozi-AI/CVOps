@@ -10,6 +10,7 @@ export interface ModelVersion {
   name: string | null
   description: string | null
   trained_on_commit_id: string | null
+  trained_on_dataset_id: string | null
   base_model: string | null
   hyperparams: Record<string, unknown> | null
   metrics: Record<string, unknown> | null

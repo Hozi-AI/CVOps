@@ -1,3 +1,5 @@
+> **Archived 2026-10-10.** Superseded by [docs/frontend-design-plan.md](../frontend-design-plan.md). Kept for history; do not treat as current.
+
 # CVOps Frontend Plan
 
 Living document. Step 1 (design tokens + dark mode) is done; everything below is queued.

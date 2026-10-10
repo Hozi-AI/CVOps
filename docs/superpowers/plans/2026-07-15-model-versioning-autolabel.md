@@ -1,5 +1,7 @@
 # Model Versioning, Artifact Gallery & Auto-Labeling Implementation Plan
 
+**Status:** DONE (PR #174)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Allow users to manually upload `.pt` files with names, descriptions, and dataset links; browse training artifact images; and trigger model-based auto-annotation on samples.

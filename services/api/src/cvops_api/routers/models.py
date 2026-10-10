@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -13,9 +14,16 @@ from cvops_api.core.storage import StorageBackend, get_storage, public_s3_endpoi
 from cvops_api.db.models.blobs import Blob
 from cvops_api.db.models.models import ModelArtifact, ModelVersion
 from cvops_api.db.models.projects import Project
+from cvops_api.db.models.versioning import Commit, Dataset
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
-from cvops_api.schemas.models import ModelArtifactCreate, ModelArtifactOut, ModelVersionCreate, ModelVersionOut, ModelVersionPatch
+from cvops_api.schemas.models import (
+    ModelArtifactCreate,
+    ModelArtifactOut,
+    ModelVersionCreate,
+    ModelVersionOut,
+    ModelVersionPatch,
+)
 
 router = APIRouter()
 
@@ -51,6 +59,31 @@ async def _get_model_version(
     if proj is None or proj.org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Not found")
     return mv
+
+
+async def _model_outs(session: AsyncSession, mvs: Sequence[ModelVersion]) -> list[ModelVersionOut]:
+    """Build ModelVersionOut rows, adding the dataset each model's commit belongs to.
+
+    The dataset id is derived from the commit (one query for the whole page) so the
+    UI can link a model to /datasets/<dataset>/commits/<commit>. A soft-deleted
+    dataset yields None rather than a link to a dead page.
+    """
+    commit_ids = {mv.trained_on_commit_id for mv in mvs if mv.trained_on_commit_id}
+    dataset_by_commit: dict[uuid.UUID, uuid.UUID] = {}
+    if commit_ids:
+        r = await session.execute(
+            select(Commit.id, Commit.dataset_id)
+            .join(Dataset, Dataset.id == Commit.dataset_id)
+            .where(Commit.id.in_(commit_ids), Dataset.deleted_at.is_(None))
+        )
+        dataset_by_commit = {commit_id: dataset_id for commit_id, dataset_id in r.all()}
+    outs: list[ModelVersionOut] = []
+    for mv in mvs:
+        out = ModelVersionOut.model_validate(mv)
+        if mv.trained_on_commit_id is not None:
+            out.trained_on_dataset_id = dataset_by_commit.get(mv.trained_on_commit_id)
+        outs.append(out)
+    return outs
 
 
 # ── Upload slot ───────────────────────────────────────────────────────────────
@@ -108,7 +141,7 @@ async def create_model_version(
     session.add(mv)
     await session.commit()
     await session.refresh(mv)
-    return ModelVersionOut.model_validate(mv)
+    return (await _model_outs(session, [mv]))[0]
 
 
 # ── Read ──────────────────────────────────────────────────────────────────────
@@ -127,7 +160,7 @@ async def list_models(
             ModelVersion.deleted_at == None,  # noqa: E711
         )
     )
-    return [ModelVersionOut.model_validate(mv) for mv in r.scalars().all()]
+    return await _model_outs(session, list(r.scalars().all()))
 
 
 @router.get("/models/{id}", response_model=ModelVersionOut)
@@ -136,7 +169,8 @@ async def get_model(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ModelVersionOut:
-    return ModelVersionOut.model_validate(await _get_model_version(id, current_user, session))
+    mv = await _get_model_version(id, current_user, session)
+    return (await _model_outs(session, [mv]))[0]
 
 
 @router.get("/models/{id}/weights-url")
@@ -168,7 +202,7 @@ async def patch_model_version(
         setattr(mv, key, val)
     await session.commit()
     await session.refresh(mv)
-    return ModelVersionOut.model_validate(mv)
+    return (await _model_outs(session, [mv]))[0]
 
 
 # ── Model Artifacts ───────────────────────────────────────────────────────────

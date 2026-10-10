@@ -1,5 +1,7 @@
 # Activity Log (FEAT-4) Implementation Plan
 
+**Status:** DONE (PR #173)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Surface the existing `events` table as a read-only, org-scoped paginated activity feed at `GET /api/v1/events` (backend) and `/activity` (frontend page).

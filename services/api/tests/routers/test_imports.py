@@ -4,6 +4,7 @@ Mounts only the imports router over testcontainers Postgres. The real
 import_dataset + commit_dataset steps are registered so config validation
 and queue routing run; their run() bodies are never invoked.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -83,9 +84,7 @@ async def test_upload_url_returns_presigned_url(factory, import_steps) -> None:
     user, project, _ont = await _seed(factory)
     blob_hash = "sha256:" + "a" * 64
 
-    with patch(
-        "cvops_api.routers.imports.get_storage"
-    ) as mock_storage:
+    with patch("cvops_api.routers.imports.get_storage") as mock_storage:
         mock_storage.return_value.get_presigned_put = AsyncMock(
             return_value="http://s3.example/presigned"
         )
@@ -111,9 +110,7 @@ async def test_upload_url_invalid_hash_422(factory, import_steps) -> None:
     assert res.status_code == 422
 
 
-async def test_import_creates_run_and_enqueues_step(
-    factory, fake_redis, import_steps
-) -> None:
+async def test_import_creates_run_and_enqueues_step(factory, fake_redis, import_steps) -> None:
     user, project, ont = await _seed(factory)
 
     async with _client(factory, user) as c:
@@ -142,9 +139,7 @@ async def test_import_creates_run_and_enqueues_step(
         assert definition["edges"] == [{"from": "import", "to": "commit"}]
 
         children = (
-            (await s.execute(select(Run).where(Run.parent_run_id == parent.id)))
-            .scalars()
-            .all()
+            (await s.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().all()
         )
         assert len(children) == 1
         assert children[0].step_type == "step.import_dataset"

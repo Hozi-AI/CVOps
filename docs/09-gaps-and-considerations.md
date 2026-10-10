@@ -1,6 +1,6 @@
 # 09 · Gaps & Considerations
 
-← [Controls, Governance & Security](./08-controls-governance-security.md) · Next → [Glossary & Roadmap](./10-glossary-and-roadmap.md)
+← [Controls, Governance & Security](./08-controls-governance-security.md) · Next → [Roadmap](../ROADMAP.md)
 
 This is the "things you might have missed" document. These are real, mostly CV/YOLO- and video-specific sharp edges and decisions. Each is stated as *the problem*, *why it bites*, and *the recommended stance*. **This is the highest-value doc to review before committing to the build** — several of these change the data model if discovered late.
 
@@ -120,4 +120,4 @@ A short list to resolve as a team — most are design forks the docs are built t
 7. **Annotation `geometry` schema** — lock a general shape now to avoid migrations (see §annotation-types-beyond-boxes).
 8. **Retention windows** for soft delete + GC ([doc 08 §8](./08-controls-governance-security.md#retention)).
 9. **Adopt W&B/MLflow** for experiment tracking, or keep it in-house?
-10. **MVP scope cut line** — see the phased plan in [doc 10](./10-glossary-and-roadmap.md).
+10. **MVP scope cut line** — see [ROADMAP.md](../ROADMAP.md) (the original doc 10 plan is [archived](./archive/10-glossary-and-roadmap.md)).

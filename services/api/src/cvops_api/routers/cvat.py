@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -30,13 +31,14 @@ async def _get_model_version(mv_id: uuid.UUID, user: User, session: AsyncSession
 
 # ── Deploy a stored model to CVAT ────────────────────────────────────────────
 
+
 @router.post("/models/{id}/cvat-deploy")
 async def cvat_deploy_model(
     id: uuid.UUID,
     model_name: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, Any]:
     """Download model weights from MinIO and deploy to CVAT via Nuclio."""
     mv = await _get_model_version(id, current_user, session)
 
@@ -52,7 +54,9 @@ async def cvat_deploy_model(
                 f"{DEPLOYER_URL}/deploy",
                 headers=_DEPLOYER_HEADERS,
                 data={"model_name": model_name},
-                files={"file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")},
+                files={
+                    "file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")
+                },
                 timeout=300,
             )
     except httpx.ConnectError:
@@ -61,15 +65,16 @@ async def cvat_deploy_model(
     if deploy_resp.status_code != 200:
         raise HTTPException(502, f"Deployer error: {deploy_resp.text}")
 
-    return deploy_resp.json()
+    return cast(dict[str, Any], deploy_resp.json())
 
 
 # ── List models available in CVAT ─────────────────────────────────────────────
 
+
 @router.get("/cvat/models")
 async def list_cvat_models(
     current_user: User = Depends(get_current_user),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return all models currently deployed in CVAT."""
     try:
         async with httpx.AsyncClient(timeout=10) as http:
@@ -78,17 +83,18 @@ async def list_cvat_models(
         return []
     if resp.status_code != 200:
         raise HTTPException(502, f"Deployer error: {resp.text}")
-    return resp.json()
+    return cast(list[dict[str, Any]], resp.json())
 
 
 # ── Upload a .pt file and deploy it to CVAT ───────────────────────────────────
+
 
 @router.post("/cvat/deploy")
 async def cvat_deploy_file(
     model_name: str,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-) -> dict:
+) -> dict[str, Any]:
     """Accept a .pt upload and forward it to the CVAT worker for deployment."""
     contents = await file.read()
     try:
@@ -103,28 +109,32 @@ async def cvat_deploy_file(
         raise HTTPException(503, "CVAT deployer is not available")
     if resp.status_code != 200:
         raise HTTPException(502, f"Deploy error: {resp.text}")
-    return resp.json()
+    return cast(dict[str, Any], resp.json())
 
 
 # ── Delete a deployed model from CVAT ────────────────────────────────────────
+
 
 @router.delete("/cvat/models/{function_id}")
 async def cvat_delete_model(
     function_id: str,
     current_user: User = Depends(get_current_user),
-) -> dict:
+) -> dict[str, Any]:
     """Remove a Nuclio function from CVAT."""
     try:
         async with httpx.AsyncClient(timeout=30) as http:
-            resp = await http.delete(f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS)
+            resp = await http.delete(
+                f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS
+            )
     except httpx.ConnectError:
         raise HTTPException(503, "CVAT deployer is not available")
     if resp.status_code != 200:
         raise HTTPException(502, f"Delete error: {resp.text}")
-    return resp.json()
+    return cast(dict[str, Any], resp.json())
 
 
 # ── Trigger auto-annotation ───────────────────────────────────────────────────
+
 
 @router.post("/projects/{project_id}/cvat-annotate")
 async def cvat_annotate(
@@ -134,7 +144,7 @@ async def cvat_annotate(
     threshold: float = Form(0.3),
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
-) -> dict:
+) -> dict[str, Any]:
     """Upload images and trigger auto-annotation in CVAT with the selected model."""
     form_data = {
         "task_name": task_name,
@@ -142,8 +152,7 @@ async def cvat_annotate(
         "threshold": str(threshold),
     }
     upload_files = [
-        ("files", (f.filename, await f.read(), f.content_type or "image/jpeg"))
-        for f in files
+        ("files", (f.filename, await f.read(), f.content_type or "image/jpeg")) for f in files
     ]
 
     try:
@@ -160,4 +169,4 @@ async def cvat_annotate(
     if resp.status_code != 200:
         raise HTTPException(502, f"Deployer error: {resp.text}")
 
-    return resp.json()
+    return cast(dict[str, Any], resp.json())

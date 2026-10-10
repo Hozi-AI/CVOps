@@ -94,7 +94,9 @@ async def create_workflow(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="A workflow with that name already exists in this project")
+        raise HTTPException(
+            status_code=409, detail="A workflow with that name already exists in this project"
+        )
     return WorkflowOut.model_validate(wf)
 
 

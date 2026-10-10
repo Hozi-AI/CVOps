@@ -21,6 +21,7 @@ env/
 .env
 .env.local
 .env.*.local
+manifests/docker-compose.local.yml
 *.env
 .pytest_cache/
 .mypy_cache/
@@ -70,3 +71,6 @@ models/
 *.key
 secrets/
 frame_extractor/videos/
+
+# just task-runner state (logs, pids)
+.just/

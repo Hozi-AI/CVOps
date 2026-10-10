@@ -1,3 +1,5 @@
+> **Archived 2026-10-10.** Superseded by the step implementations in [`packages/steps`](../../packages/steps/src/cvops_steps/) (`auto_label.py`); the standalone CLI prototype was removed (commit 64460d7), CVAT sync is `worker-cvat`. Kept for history; do not treat as current.
+
 # cvat_autolabel.py
 
 **Current Step 2 — upload frames to CVAT and auto-label with YOLO12n**
@@ -17,7 +19,7 @@ If it is not, run the startup script first:
 bash scripts/start_env.sh
 ```
 
-See [start_env.sh](../scripts/start_env.sh) for details on what the startup script does.
+See [start_env.sh](../../scripts/start_env.sh) for details on what the startup script does.
 
 ---
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import Any
 from abc import ABC, abstractmethod
 
 import boto3
@@ -56,9 +57,7 @@ class StorageBackend(ABC):
         """
 
     @abstractmethod
-    async def promote_upload(
-        self, upload_id: str, blob_hash: str
-    ) -> tuple[int, str, str]:
+    async def promote_upload(self, upload_id: str, blob_hash: str) -> tuple[int, str, str]:
         """Move a finished `uploads/{id}` object to its content-addressed
         `blobs/{hash}` location via a server-side copy (bytes never transit the
         API). Idempotent: skips the copy if the blob key already exists.
@@ -114,7 +113,7 @@ class S3Backend(StorageBackend):
         self._verify_bucket()
         self._ensure_cors()
 
-    def _build_client(self, endpoint: str):
+    def _build_client(self, endpoint: str) -> Any:  # boto3 S3 client (untyped)
         return boto3.client(
             "s3",
             endpoint_url=endpoint,
@@ -124,7 +123,7 @@ class S3Backend(StorageBackend):
             config=self._cfg,
         )
 
-    def _presign_client_for(self, endpoint: str | None):
+    def _presign_client_for(self, endpoint: str | None) -> Any:
         """Pick the signing client. None / matching → the default presign client;
         otherwise a per-endpoint client cached for reuse."""
         if not endpoint or endpoint in (settings.S3_ENDPOINT, settings.S3_PUBLIC_ENDPOINT):
@@ -183,9 +182,7 @@ class S3Backend(StorageBackend):
         blob_hash = self._sha256(data)
         key = self._bucket_key(blob_hash)
         if not self._exists(key):
-            self._client.put_object(
-                Bucket=self._bucket, Key=key, Body=data, ContentType=media_type
-            )
+            self._client.put_object(Bucket=self._bucket, Key=key, Body=data, ContentType=media_type)
         return blob_hash
 
     async def get_presigned_get(
@@ -221,9 +218,7 @@ class S3Backend(StorageBackend):
             )
         )
 
-    async def promote_upload(
-        self, upload_id: str, blob_hash: str
-    ) -> tuple[int, str, str]:
+    async def promote_upload(self, upload_id: str, blob_hash: str) -> tuple[int, str, str]:
         src_key = f"uploads/{upload_id}"
         dst_key = self._bucket_key(blob_hash)
         head = self._client.head_object(Bucket=self._bucket, Key=src_key)
@@ -240,15 +235,11 @@ class S3Backend(StorageBackend):
         return size_bytes, media_type, dst_key
 
     async def get_bytes(self, blob_hash: str) -> bytes:
-        resp = self._client.get_object(
-            Bucket=self._bucket, Key=self._bucket_key(blob_hash)
-        )
+        resp = self._client.get_object(Bucket=self._bucket, Key=self._bucket_key(blob_hash))
         return resp["Body"].read()  # type: ignore[no-any-return]
 
     async def delete_blob(self, blob_hash: str) -> None:
-        self._client.delete_object(
-            Bucket=self._bucket, Key=self._bucket_key(blob_hash)
-        )
+        self._client.delete_object(Bucket=self._bucket, Key=self._bucket_key(blob_hash))
 
 
 _storage: StorageBackend | None = None

@@ -151,6 +151,8 @@ Expected output:
 
 This section walks through the full lifecycle using `curl`. All IDs below are placeholders -- substitute your own.
 
+> **Out of date (2026-10-10).** The calls below predate the current API: routes live under `/api/v1/…` (e.g. `http://localhost:8000/api/v1/projects/…`), workflow steps use `"type"` with `step.*` keys (`step.extract_frames`, `step.auto_label`, `step.human_review` — not `cvops.*`), and `step.auto_label` takes a trained model (`config.model_version_id`, required), not a model name. Use the [interactive API docs](http://localhost:8000/docs) as the reference.
+
 ### 1. Upload a data source
 
 ```bash
@@ -343,10 +345,13 @@ POST /workflows/{id}/runs  →  201 {"id": "...", "status": "pending"}
 
 | Package | Language | Status | Description |
 |---|---|---|---|
-| `services/api` | Python 3.12 · FastAPI | ✅ Complete | REST API, workflow engine, DB layer - 21 models, 40+ endpoints, 146 tests |
+| `services/api` | Python 3.12 · FastAPI | ✅ Complete | REST API, workflow engine, DB layer - ~27 models, 100+ endpoints, ~540 tests |
 | `services/frontend` | TypeScript · React 18 | ✅ Implemented | Dashboard UI - Vite · TanStack Query · Zustand · @xyflow/react; auth, all pages, api layer, data-source/frame viewer |
-| `packages/steps` | Python | 🚧 Partial | Steps: `extract_frames`, `commit_dataset`, `export_yolo`, `train`, `human_review` implemented; `auto_label` is a stub |
+| `packages/steps` | Python | ✅ Implemented | Steps: `extract_frames`, `import_dataset`, `auto_label` (local YOLO inference, `training` queue), `human_review`, `commit_dataset`, `export_yolo`, `train`, plus non-CV `chunk_text`, `parse_sensor`, `export_jsonl`, `export_csv` |
 | `services/worker-preprocessing` | Python · Redis Streams | ✅ Complete | Consumes the `preprocessing` stream; runs steps out of the API process |
+| `services/worker-cvat` | Python · Redis Streams | ✅ Implemented | Consumes the `cvat` stream: `human_review` push/pull with CVAT, `deploy_model` to Nuclio (opt-in, `tilt up -- --cvat`) |
+| `services/worker-training` | Python · Redis Streams · Docker | ✅ Implemented | Consumes the `training` stream: `train`, `auto_label` (opt-in, `tilt up -- --training`) |
+| `services/model-deployer` | Python · FastAPI | ✅ Implemented | Internal service: deploys `.pt` models to CVAT via Nuclio; bearer-authenticated with `WORKER_TOKEN` |
 
 ---
 
@@ -395,7 +400,7 @@ All endpoints except `/auth/*` require `Authorization: Bearer <token>`.
 </details>
 
 <details>
-<summary><strong>Data Sources</strong> - 5 endpoints</summary>
+<summary><strong>Data Sources</strong> - 9 endpoints</summary>
 
 | Method | Path | Description |
 |---|---|---|
@@ -403,15 +408,28 @@ All endpoints except `/auth/*` require `Authorization: Bearer <token>`.
 | `POST` | `/projects/{id}/data-sources` | Create + get presigned PUT URL |
 | `POST` | `/projects/{id}/data-sources/check` | Pre-upload duplicate check by blob hash |
 | `POST` | `/data-sources/{id}/confirm-upload` | Confirm upload with blob hash |
+| `POST` | `/projects/{id}/image-uploads/presign` | Presigned PUT URLs for a batch of images (by SHA-256) |
+| `POST` | `/projects/{id}/image-uploads/confirm` | Register uploaded images as samples |
+| `POST` | `/projects/{id}/annotated-uploads/confirm` | Register uploaded images + YOLO boxes as samples with annotation revisions ([doc 16](docs/16-dataset-import.md#5-annotated-upload-programmatic-yolo)) |
 | `GET` | `/data-sources/{id}` | Get data source |
 | `DELETE` | `/data-sources/{id}` | Delete data source |
 
 </details>
 
 <details>
+<summary><strong>Imports</strong> - 2 endpoints</summary>
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/projects/{id}/imports/upload-url` | Presigned PUT URL for a dataset zip |
+| `POST` | `/projects/{id}/imports` | Dispatch `import_dataset → [human_review] → commit_dataset` from a zip blob or server folder path ([doc 16](docs/16-dataset-import.md)) |
+
+</details>
+
+<details>
 <summary><strong>Samples, Ontologies, Datasets, Workflows, Runs, Models, Training Containers</strong></summary>
 
-Full endpoint table: **40+ endpoints total** - see the [interactive API docs](http://localhost:8000/docs) for the complete reference with request/response schemas.
+Full endpoint table: **100+ endpoints total** - see the [interactive API docs](http://localhost:8000/docs) for the complete reference with request/response schemas.
 
 Highlights:
 - `GET /projects/{id}/samples?cursor=&source_id=&limit=50` - cursor-based pagination
@@ -465,6 +483,12 @@ npm run dev         # http://localhost:5173
 
 `tilt up` is the recommended dev entry point — infra in containers, api + frontend as host processes with HMR.
 
+Port collisions / non-default boxes (all optional, in `manifests/.env`):
+
+- `POSTGRES_HOST_PORT` / `REDIS_HOST_PORT` / `EDGE_HOST_PORT` (defaults 5432 / 6379 / 80) move the published ports; the Tiltfile points the host API and workers at the same ports. `*_BIND_ADDR=127.0.0.1` keeps a service off the network.
+- `VITE_HMR_CLIENT_PORT` sets the port the HMR websocket connects back on (default 80, the nginx edge); `auto` uses the page's own port — needed when `:80` belongs to something else.
+- Per-machine compose extras (networks, labels) go in a gitignored `manifests/docker-compose.local.yml`, which the Tiltfile merges when present.
+
 To force a containerised dev stack (rare — for reproducing CI failures):
 
 ```bash
@@ -494,7 +518,7 @@ pytest tests/ -s --tb=long
 | API framework | [FastAPI](https://fastapi.tiangolo.com) 0.115 | Async, auto-docs, Pydantic v2 |
 | Database | PostgreSQL 16 | asyncpg driver |
 | ORM | SQLAlchemy 2.0 async | `Mapped[T]` / `mapped_column()` |
-| Migrations | Alembic | 1 initial migration, 21 tables |
+| Migrations | Alembic | Squashed `0001` baseline + incremental `0002`–`0007` |
 | Blob storage | Garage (S3-compatible) | Content-addressed by SHA-256 |
 | Cache / revocation | Redis 7 | JWT JTI blacklist with TTL |
 | Auth | python-jose + passlib | JWT HS256, bcrypt cost 12 |
@@ -528,7 +552,7 @@ cp manifests/.env.example manifests/.env
 | `GARAGE_RPC_SECRET` | ✅ | Garage cluster RPC secret (32-byte hex) |
 | `GARAGE_ADMIN_TOKEN` | ✅ | Garage admin API token |
 | `GARAGE_METRICS_TOKEN` | ✅ | Garage metrics token |
-| `WORKER_TOKEN` | ✅ | Shared secret for internal `/internal/*` calls |
+| `WORKER_TOKEN` | ✅ | Bearer the API sends to the CVAT model deployer. **Not** validated on inbound `/internal/*` calls yet ([#71](https://github.com/Hozi-AI/CVOps/issues/71)) — those are only `/internal/health` and the HMAC-verified `/internal/cvat/webhook` |
 | `DATABASE_URL` | auto | Derived - set in manifests/docker-compose.yml |
 | `REDIS_URL` | auto | Defaults to `redis://redis:6379/0` |
 
@@ -539,9 +563,11 @@ cp manifests/.env.example manifests/.env
 | Document | Description |
 |---|---|
 | [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) | Full system reference - start here |
-| [`docs/VISION.md`](docs/VISION.md) | Product vision and roadmap |
+| [`ROADMAP.md`](ROADMAP.md) | Current priorities and ordering |
+| [`docs/VISION.md`](docs/VISION.md) | Product vision |
+| [`docs/16-dataset-import.md`](docs/16-dataset-import.md) | Importing pre-labelled data (YOLO / COCO / raw) |
 | [`services/api/CLAUDE.md`](services/api/CLAUDE.md) | API developer orientation (shared deps, conventions, auth model) |
-| [`docs/db/`](docs/db/) | Per-model database schema documentation |
+| [`services/api/docs/db/`](services/api/docs/db/) | Per-model database schema documentation |
 | [Interactive API docs](http://localhost:8000/docs) | Swagger UI - live when stack is running |
 | [`brand/`](brand/) | Logos, color tokens, icons, social assets, brand guide |
 

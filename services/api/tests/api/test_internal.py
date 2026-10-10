@@ -126,7 +126,9 @@ async def test_webhook_bad_signature_401(client: AsyncClient, monkeypatch) -> No
 
 async def test_webhook_completion_enqueues(client: AsyncClient, fake_redis, monkeypatch) -> None:
     monkeypatch.setenv("CVAT_WEBHOOK_SECRET", "s3cret")
-    body = json.dumps({"event": "update:job", "job": {"task_id": 4242, "state": "completed"}}).encode()
+    body = json.dumps(
+        {"event": "update:job", "job": {"task_id": 4242, "state": "completed"}}
+    ).encode()
     resp = await client.post(
         "/internal/cvat/webhook", content=body, headers={"X-Signature-256": _sign("s3cret", body)}
     )

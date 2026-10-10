@@ -23,10 +23,11 @@ def test_resolves_run_param_ref() -> None:
     assert resolve_refs("$run.params.source_id", {}, params) == "src-123"
 
 
-def test_output_name_may_contain_dots() -> None:
-    # The output-name capture group is greedy (.+), so dotted names work.
-    outputs = {"s1": {"a.b.c": 42}}
-    assert resolve_refs("$steps.s1.outputs.a.b.c", outputs, {}) == 42
+def test_step_id_may_contain_dots() -> None:
+    # The step-id capture group is greedy (.+) and the output name is the final
+    # dot-free segment, so dotted step ids resolve (fixed in 6b49954).
+    outputs = {"node.1": {"frames": 42}}
+    assert resolve_refs("$steps.node.1.outputs.frames", outputs, {}) == 42
 
 
 def test_param_name_may_contain_dots() -> None:
@@ -38,10 +39,12 @@ def test_plain_string_passthrough() -> None:
     assert resolve_refs("just a string", {}, {}) == "just a string"
 
 
-def test_dollar_string_that_is_not_a_ref_passes_through() -> None:
-    # Starts with $ but matches neither grammar → returned verbatim.
-    assert resolve_refs("$notaref", {}, {}) == "$notaref"
-    assert resolve_refs("$steps.s1.frames", {}, {}) == "$steps.s1.frames"
+@pytest.mark.parametrize("value", ["$notaref", "$steps.s1.frames"])
+def test_dollar_string_that_is_not_a_ref_fails_loudly(value: str) -> None:
+    # Starts with $ but matches neither grammar → raise instead of handing the
+    # raw string to a step (docs/bugs/2026-07-12-workflow-run-bugs.md).
+    with pytest.raises(ResolutionError, match="Unresolved ref"):
+        resolve_refs(value, {}, {})
 
 
 @pytest.mark.parametrize("value", [42, 3.14, True, False, None])

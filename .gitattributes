@@ -24,6 +24,7 @@
 # shell & config — always LF
 *.sh        text eol=lf
 Makefile    text eol=lf
+justfile    text eol=lf
 Dockerfile* text eol=lf
 *.conf      text eol=lf
 *.ini       text eol=lf

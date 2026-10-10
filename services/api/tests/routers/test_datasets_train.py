@@ -153,9 +153,7 @@ async def test_train_commit_creates_adhoc_run_and_enqueues_export(
 
         # advance_workflow created the export child (train waits on it).
         children = (
-            (await s.execute(select(Run).where(Run.parent_run_id == parent.id)))
-            .scalars()
-            .all()
+            (await s.execute(select(Run).where(Run.parent_run_id == parent.id))).scalars().all()
         )
         assert len(children) == 1
         child = children[0]
@@ -179,9 +177,7 @@ async def test_train_commit_unknown_commit_404(factory, real_steps) -> None:
     assert res.status_code == 404
 
 
-async def test_train_commit_threads_training_container_id(
-    factory, fake_redis, real_steps
-) -> None:
+async def test_train_commit_threads_training_container_id(factory, fake_redis, real_steps) -> None:
     user, dataset, commit, tc = await _seed(factory)
 
     async with _client(factory, user) as c:

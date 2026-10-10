@@ -134,9 +134,7 @@ async def _project_view(
     if capped:
         samples = samples[:limit]
 
-    dr = await session.execute(
-        select(DataSource).where(DataSource.project_id == project_id)
-    )
+    dr = await session.execute(select(DataSource).where(DataSource.project_id == project_id))
     sources = {ds.id: ds for ds in dr.scalars().all()}
 
     title = f"Dataset · {project.name}"

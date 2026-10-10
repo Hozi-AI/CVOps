@@ -41,7 +41,7 @@ failed    → user retries              → running    (attempt + 1)
 
 ### Worker Token
 
-Workers authenticate to the API using a long-lived JWT (`WORKER_TOKEN` env var). Never use user credentials in workers.
+Workers make no API calls — they read/write PostgreSQL directly and advance workflows in-process via `advance_workflow`. `WORKER_TOKEN` is not validated by the API (#71); its only live use is the bearer the API sends to the model deployer. Never use user credentials in workers.
 
 ### Presigned URL Pattern
 

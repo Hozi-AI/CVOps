@@ -202,7 +202,10 @@ async def run() -> None:
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, stop.set)
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:  # Windows event loops have no signal handlers
+            pass
 
     sem = asyncio.Semaphore(CONCURRENCY)
     orphan_task = asyncio.create_task(_orphan_recovery_loop(stop))

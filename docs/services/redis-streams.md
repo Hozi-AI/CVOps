@@ -18,9 +18,9 @@ API creates runs row in PG  →  XADD thin message to Redis Stream
                                          ↓
                                Worker executes, writes results to PG
                                          ↓
-                               Worker POSTs /internal/runs/{id}/advance
+                               Worker calls advance_workflow (in-process)
                                          ↓
-                               Executor enqueues next step → XADD next stream
+                               Coordinator enqueues next step → XADD next stream
                                          ↓
                                Worker XACKs message
 ```
@@ -110,24 +110,28 @@ for stream, msgs in messages:
 
 ## Auto-Chain Contract
 
-Workers do not enqueue the next step directly. Instead, on successful step completion a worker calls:
+> **Updated 2026-10-10.** `POST /internal/runs/{id}/advance` was never built.
+
+Workers do not pick the next step themselves. After a step finishes, the worker calls
+`advance_workflow(session, parent_run_id, actor)` from
+`cvops_api.engine.coordinator` **in-process** (worker-preprocessing and worker-cvat
+via `process_step`; the CVAT pull via `worker_cvat/sync.py`). The coordinator then:
+1. Resolves the next ready steps in the workflow DAG
+2. Creates their child `runs` rows in PG with frozen `input_refs`
+3. Does `XADD` to each step's queue (`Step.queue`, empty → `preprocessing`)
+
+All DAG logic stays in the coordinator; steps never know what comes next.
+
+**Known gap:** worker-training uses `packages/worker-common`'s `JobRunner`, which
+still POSTs to the non-existent advance endpoint (404, logged at debug). Steps on
+the `training` queue (`train`, `auto_label`) therefore never advance their
+workflow — tracked in #182.
+
+Example ingest DAG (queues in brackets):
 
 ```
-POST /internal/runs/{workflow_run_id}/advance
-Body: { "step_run_id": "<uuid>", "output_refs": { ... } }
-```
-
-The executor then:
-1. Marks the child run `succeeded`
-2. Resolves the next steps in the workflow DAG
-3. Creates their `runs` rows in PG
-4. Does `XADD` to the appropriate stream for each
-
-This keeps all DAG orchestration logic in the executor. Workers are dumb executors — they never know what comes next.
-
-```
-extract_frames (preprocessing) → auto_label (cvat) → human_review (cvat, gate)
-    → commit_dataset (preprocessing) → export_yolo (cvat) → train (training)
+extract_frames (preprocessing) → human_review (cvat, gate)
+    → commit_dataset (preprocessing) → export_yolo (preprocessing) → train (training)
 ```
 
 ---

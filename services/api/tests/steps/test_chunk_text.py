@@ -1,4 +1,5 @@
 """Tests for step.chunk_text."""
+
 from __future__ import annotations
 import uuid
 import pytest
@@ -48,7 +49,11 @@ def _make_ctx(blob_bytes: bytes):
         MagicMock(first=MagicMock(return_value=source_row)),
         MagicMock(),  # UPDATE status ingesting
         MagicMock(),  # INSERT samples (repeated N times — side_effect covers first)
-        MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
         MagicMock(),  # UPDATE status ready
     ]
 
@@ -71,7 +76,9 @@ async def test_chunk_text_by_chars():
     text = b"a" * 100
     ctx, src_id = _make_ctx(text)
     result = await ChunkTextStep().run(
-        ctx, config={"chunk_size": 20, "overlap": 0, "split_by": "chars"}, inputs={"source_id": src_id}
+        ctx,
+        config={"chunk_size": 20, "overlap": 0, "split_by": "chars"},
+        inputs={"source_id": src_id},
     )
     assert "sample_ids" in result
     assert len(result["sample_ids"]) == 5  # 100 / 20

@@ -141,10 +141,7 @@ async def test_commit_creates_commit_samples_and_branch(session: AsyncSession) -
     # All 5 samples pinned into the commit.
     cs = (
         await session.execute(
-            text(
-                "SELECT sample_id, split FROM commit_samples "
-                "WHERE commit_id = CAST(:c AS uuid)"
-            ),
+            text("SELECT sample_id, split FROM commit_samples WHERE commit_id = CAST(:c AS uuid)"),
             {"c": result["commit_id"]},
         )
     ).all()
@@ -188,11 +185,13 @@ async def test_second_commit_advances_branch_with_parent_link(session: AsyncSess
     config = {"dataset_name": "ds2", "ontology_id": ont_id, "branch_name": "main"}
 
     first = await step.run(
-        _ctx(session, proj_id), config,
+        _ctx(session, proj_id),
+        config,
         {"sample_ids": sample_ids[:3], "annotation_revision_ids": revision_ids[:3]},
     )
     second = await step.run(
-        _ctx(session, proj_id), config,
+        _ctx(session, proj_id),
+        config,
         {"sample_ids": sample_ids, "annotation_revision_ids": revision_ids},
     )
 
@@ -241,8 +240,7 @@ async def test_random_seeded_is_deterministic(session: AsyncSession) -> None:
         rows = (
             await session.execute(
                 text(
-                    "SELECT sample_id, split FROM commit_samples "
-                    "WHERE commit_id = CAST(:c AS uuid)"
+                    "SELECT sample_id, split FROM commit_samples WHERE commit_id = CAST(:c AS uuid)"
                 ),
                 {"c": commit_id},
             )

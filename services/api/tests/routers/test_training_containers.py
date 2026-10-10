@@ -198,9 +198,7 @@ async def test_create_under_foreign_project_404(factory) -> None:
     other_user, _other_project = await _seed(factory)
 
     async with _client(factory, other_user) as c:
-        res = await c.post(
-            f"/projects/{project.id}/training-containers", json=_create_body()
-        )
+        res = await c.post(f"/projects/{project.id}/training-containers", json=_create_body())
         assert res.status_code == 404, res.text
 
 

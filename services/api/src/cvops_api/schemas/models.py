@@ -13,6 +13,7 @@ class ModelVersionOut(BaseModel):
     name: str | None = None
     description: str | None = None
     trained_on_commit_id: uuid.UUID | None = None
+    trained_on_dataset_id: uuid.UUID | None = None
     base_model: str | None = None
     hyperparams: dict[str, Any] | None = None
     metrics: dict[str, Any] | None = None

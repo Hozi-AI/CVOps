@@ -123,6 +123,12 @@ def envreq(key):
         fail('manifests/.env is missing required key: %s' % key)
     return env[key]
 
+# Host ports the infra containers publish (docker-compose.yml `ports:`); the host
+# processes below connect through them. Override in manifests/.env when the
+# defaults are taken on your machine.
+POSTGRES_HOST_PORT = env.get('POSTGRES_HOST_PORT') or '5432'
+REDIS_HOST_PORT    = env.get('REDIS_HOST_PORT') or '6379'
+
 # ── Optional heavy stacks (OFF by default for low-powered machines) ─────────
 # CVAT (labelling) and the training/MLflow stack are the expensive parts of the
 # system:
@@ -183,8 +189,14 @@ main_profiles = []
 if ENABLE_TRAINING:
     main_profiles = main_profiles + ['worker', 'mlflow']
 
+# manifests/docker-compose.local.yml is an optional, gitignored per-machine
+# override (extra networks, labels, ...) merged on top when present.
+main_compose = ['manifests/docker-compose.yml']
+if os.path.exists('manifests/docker-compose.local.yml'):
+    main_compose.append('manifests/docker-compose.local.yml')
+
 docker_compose(
-    ['manifests/docker-compose.yml'],
+    main_compose,
     env_file='manifests/.env',
     project_name='cvops',
     profiles=main_profiles,
@@ -211,7 +223,7 @@ if ENABLE_CVAT:
 
 dc_resource('postgres',
     labels=['1-infra'],
-    links=[link('postgres://localhost:5432', 'pg')],
+    links=[link('postgres://localhost:%s' % POSTGRES_HOST_PORT, 'pg')],
 )
 
 dc_resource('garage-init',
@@ -229,7 +241,7 @@ dc_resource('garage',
 
 dc_resource('redis',
     labels=['1-infra'],
-    links=[link('redis://localhost:6379', 'redis')],
+    links=[link('redis://localhost:%s' % REDIS_HOST_PORT, 'redis')],
 )
 
 # MLflow tracking server (+ one-shot DB create). Gated to the `mlflow` compose
@@ -428,10 +440,10 @@ local_resource('frontend-install',
 # Connection strings rewritten to localhost:<published-port> — the host process
 # hits Docker's exposed ports, not the compose-internal network DNS.
 api_env = {
-    'DATABASE_URL': 'postgresql+asyncpg://%s:%s@localhost:5432/%s' % (
-        envreq('POSTGRES_USER'), envreq('POSTGRES_PASSWORD'), envreq('POSTGRES_DB'),
+    'DATABASE_URL': 'postgresql+asyncpg://%s:%s@localhost:%s/%s' % (
+        envreq('POSTGRES_USER'), envreq('POSTGRES_PASSWORD'), POSTGRES_HOST_PORT, envreq('POSTGRES_DB'),
     ),
-    'REDIS_URL':       'redis://localhost:6379/0',
+    'REDIS_URL':       'redis://localhost:%s/0' % REDIS_HOST_PORT,
     'S3_ENDPOINT':     'http://localhost:3900',
     # S3_PUBLIC_ENDPOINT intentionally unset: the API derives the presign host
     # per-request from the browser's Host header, so uploads work from localhost
@@ -473,7 +485,11 @@ local_resource('frontend',
     # MLflow comes up on host :5000 only when training is enabled, so the
     # model-page "MLflow run" link points there. With training off the link is
     # dead (no runs exist anyway). VM devs can override in .env.
-    serve_env={'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000')},
+    serve_env={
+        'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000'),
+        # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge.
+        'VITE_HMR_CLIENT_PORT': env.get('VITE_HMR_CLIENT_PORT', ''),
+    },
     deps=['services/frontend/src', 'services/frontend/vite.config.ts', 'services/frontend/index.html'],
     resource_deps=['api', 'frontend-install'],
     readiness_probe=probe(

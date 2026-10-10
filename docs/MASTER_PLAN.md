@@ -4,6 +4,12 @@
 **Status:** Living reference. Supersedes docs 01–10. Last updated: 2026-06-11.
 **Audience:** Full team — Yehuda (substrate/versioning/orchestration), Nati/Yahav (steps: extract/label/export/train), Itai (executor).
 
+> **Status note (2026-10-10).** Parts of this plan diverged from what shipped:
+> - The `samples` → `data_items` rename was **never done** — the table is still `samples`, made domain-agnostic with a `modality` field instead (migration `0007_multi_modality`).
+> - Steps run out-of-process on **Redis Streams** + the PG `runs` table — no Celery, and no in-process `BackgroundTasks` executor. See [services/redis-streams.md](./services/redis-streams.md).
+> - `worker-labeling` shipped as **`worker-cvat`**.
+> - Current priorities and ordering live in [ROADMAP.md](../ROADMAP.md), not §19.
+
 > **Rev 2026-06-11 — Architecture decisions locked in this revision:**
 > 1. `samples` table renamed to `data_items` with `item_type` + `metadata JSONB` — platform is now domain-agnostic (supports CV, RF, audio, etc.)
 > 2. Celery removed — replaced with Redis Streams (job wake-up) + PostgreSQL `runs` table (job state + queue). PG is source of truth; Redis is the fast signal.
