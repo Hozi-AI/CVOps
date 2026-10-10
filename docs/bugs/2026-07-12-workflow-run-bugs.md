@@ -78,23 +78,9 @@ Existing saved workflows with dotted IDs still work via the greedy `.+` regex.
 
 ---
 
-### 5. Worker-preprocessing didn't watch `services/api/src`
-Not a code bug, but caused several confusing "fix is in but still broken"
-cycles. The Tiltfile's `worker-preprocessing` resource only watches
-`services/worker-preprocessing/src` and `packages/steps/src`, not
-`services/api/src`. The coordinator (`advance_workflow`, `process_step`) and
-`ref_resolver` all live in `services/api/src` — shared between the API and the
-worker via editable install — but only the API hot-reloads when they change.
-The worker must be manually restarted in Tilt after touching those files.
-
-**Suggested fix:** add `'services/api/src/cvops_api/engine'` to the
-`worker-preprocessing` deps in the Tiltfile.
-
----
-
-## Open Bug
-
 ### 6. `commit_dataset` fails with "0 annotation revisions provided" when human_review hits idempotency across different source videos
+
+**Status:** FIXED — `HumanReviewStep.idempotency_key` now returns `uuid.uuid4().hex`, so `human_review` never short-circuits on a prior run's revision IDs (first option below).
 
 **Symptom:** `commit_dataset` fails with:
 > no sample has an annotation revision among 0 provided; nothing to commit
@@ -122,3 +108,21 @@ in time. Reusing them across runs that may have different samples is wrong.
 - Alternatively, the gate-resolve endpoint already queries `labeling_jobs` for
   the current run's annotation_revision_ids; ensuring human_review ALWAYS goes
   through the gate (never hits idempotency) would naturally fix this.
+
+---
+
+## Open Bug
+
+### 5. Worker-preprocessing didn't watch `services/api/src`
+**Status:** OPEN — still unfixed in the Tiltfile (deps are `services/worker-preprocessing/src` + `packages/steps/src/cvops_steps`); tracked in #193.
+
+Not a code bug, but caused several confusing "fix is in but still broken"
+cycles. The Tiltfile's `worker-preprocessing` resource only watches
+`services/worker-preprocessing/src` and `packages/steps/src`, not
+`services/api/src`. The coordinator (`advance_workflow`, `process_step`) and
+`ref_resolver` all live in `services/api/src` — shared between the API and the
+worker via editable install — but only the API hot-reloads when they change.
+The worker must be manually restarted in Tilt after touching those files.
+
+**Suggested fix:** add `'services/api/src/cvops_api/engine'` to the
+`worker-preprocessing` deps in the Tiltfile.

@@ -1,7 +1,7 @@
 # Dataset Importer Design
 
 **Date:** 2026-07-07
-**Status:** Approved
+**Status:** DONE (commits ac29709, 86697a5, 6d581e3)
 
 ## Problem
 

@@ -8,13 +8,13 @@ Ideas surfaced from a gap analysis against the core ML loop. Ordered roughly by 
 
 ## FEAT-1: Dataset stats per commit
 
-**Status:** TODO
+**Status:** PARTIAL — workflow-path stats ship; the from-samples gap is tracked in #195
 
 Show class distribution, sample counts per split (train/val/test), and annotation coverage on the commit detail page.
 
 **Why it matters:** First thing you check before kicking off a train. Data is already in Postgres — mostly a query + chart.
 
-**Rough scope:** `CommitStats` component + workflow-path stats already work. Only gap: the direct "from-samples" commit endpoint (`POST /projects/{id}/datasets/from-samples`) stores only `sample_count`, not `by_class`/`by_split`. One extra aggregation query there closes it.
+**Rough scope:** `CommitStats` component + workflow-path stats already work. Only gap: the direct "from-samples" commit endpoint (`POST /datasets/{id}/commits/from-samples`) stores only `sample_count`, not `by_class`/`by_split`. One extra aggregation query there closes it.
 
 ---
 
@@ -28,7 +28,7 @@ Already fully implemented: `POST /runs/{id}/retry` in `services/api/src/cvops_ap
 
 ## FEAT-3: Model comparison
 
-**Status:** TODO
+**Status:** TODO — tracked in #60
 
 Side-by-side view of two or more model versions — metrics, commit they trained on, training container.
 
@@ -40,7 +40,7 @@ Side-by-side view of two or more model versions — metrics, commit they trained
 
 ## FEAT-4: Activity / audit log UI
 
-**Status:** IN PROGRESS — spec approved, implementation plan not yet written
+**Status:** DONE (PR #173)
 
 A page (or panel) that surfaces the `events` table — who did what, when, on which resource.
 
@@ -52,7 +52,7 @@ A page (or panel) that surfaces the `events` table — who did what, when, on wh
 
 ## FEAT-5: Run completion notifications
 
-**Status:** TODO
+**Status:** TODO — tracked in #196
 
 Push a notification (toast + sidebar badge) when an async run finishes or fails — no more manual polling.
 
@@ -64,7 +64,7 @@ Push a notification (toast + sidebar badge) when an async run finishes or fails 
 
 ## FEAT-6: RBAC
 
-**Status:** TODO
+**Status:** TODO — tracked in #72
 
 Role-based access within an org: admin, annotator, viewer.
 
@@ -76,7 +76,7 @@ Role-based access within an org: admin, annotator, viewer.
 
 ## FEAT-7: Auto-label step
 
-**Status:** TODO (stub exists in `cvops_steps`)
+**Status:** DONE (PR #174) — local YOLO inference on the `training` queue
 
 Run a model against unlabeled samples to produce draft `annotation_revisions`, then gate on human review.
 
@@ -88,7 +88,7 @@ Run a model against unlabeled samples to produce draft `annotation_revisions`, t
 
 ## FEAT-8: Commit diff
 
-**Status:** TODO
+**Status:** DONE (#54)
 
 Show what changed between two commits: samples added/removed, annotations changed.
 
