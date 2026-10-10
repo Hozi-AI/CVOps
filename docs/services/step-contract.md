@@ -81,11 +81,12 @@ All inputs and outputs are **artifact references** — UUIDs and blob hashes. Ra
 
 | step_type | queue | inputs | outputs |
 |---|---|---|---|
-| `step.extract_frames` | `preprocessing` | `{source_id: uuid}` | `{data_item_ids: [uuid, ...]}` |
-| `step.auto_label` | `cvat` | `{data_item_ids: [uuid, ...]}` | `{annotation_revision_ids: [uuid, ...]}` |
-| `step.human_review` | `cvat` | `{annotation_revision_ids: [uuid, ...]}` | `{annotation_revision_ids: [uuid, ...]}` |
-| `step.commit_dataset` | `preprocessing` | `{data_item_ids: [uuid, ...], annotation_revision_ids: [uuid, ...]}` | `{commit_id: uuid, ref_id: uuid}` |
-| `step.export_yolo` | `cvat` | `{commit_id: uuid}` | `{export_blob_hash: "sha256:...", commit_id: uuid}` |
+| `step.extract_frames` | `preprocessing` | `{source_id: uuid}` | `{sample_ids: [uuid, ...], frame_count}` |
+| `step.import_dataset` | `preprocessing` | `{blob_hash}` or `{folder_path}` | `{sample_ids, annotation_revision_ids, splits?, import_stats}` |
+| `step.auto_label` | `training` | `{sample_ids: [uuid, ...]}` (config: `model_version_id` required) | `{annotation_revision_ids: [uuid, ...]}` |
+| `step.human_review` | `cvat` | `{sample_ids: [uuid, ...], annotation_revision_ids?: [uuid, ...]}` | `{annotation_revision_ids: [uuid, ...]}` (after gate) |
+| `step.commit_dataset` | `preprocessing` | `{sample_ids: [uuid, ...], annotation_revision_ids: [uuid, ...], splits?}` | `{commit_id: uuid, ref_id: uuid, dataset_id: uuid}` |
+| `step.export_yolo` | `preprocessing` | `{commit_id: uuid}` | `{export_blob_hash: "sha256:...", commit_id: uuid}` |
 | `step.train` | `training` | `{export_blob_hash: "sha256:...", commit_id: uuid}` | `{model_version_id: uuid}` |
 
 ---

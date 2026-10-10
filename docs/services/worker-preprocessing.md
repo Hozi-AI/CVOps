@@ -47,7 +47,7 @@ MINIO_ACCESS_KEY    <minio root user>
 MINIO_SECRET_KEY    <minio root password>
 REDIS_URL           redis://redis:6379/0
 REDIS_STREAM        preprocessing
-WORKER_TOKEN        <long-lived JWT for POST /internal/*>
+WORKER_TOKEN        (unused — this worker makes no API calls; the API doesn't validate it, #71)
 WORKER_CONCURRENCY  4    (optional — parallel job slots, default 4)
 ```
 
@@ -57,10 +57,13 @@ WORKER_CONCURRENCY  4    (optional — parallel job slots, default 4)
 
 | step_type | queue | What it does |
 |---|---|---|
-| `step.extract_frames` | `preprocessing` | FFmpeg frame extraction, dedup, thumbnail generation |
+| `step.extract_frames` | `preprocessing` | OpenCV frame extraction, exact-hash dedup, thumbnail generation |
+| `step.import_dataset` | `preprocessing` | Ingest a YOLO / COCO / raw dataset ([doc 16](../16-dataset-import.md)) |
 | `step.commit_dataset` | `preprocessing` | Creates immutable commit + CAS branch advance |
+| `step.export_yolo` | `preprocessing` | Materialise a commit as a YOLO dataset |
+| `step.chunk_text`, `step.parse_sensor`, `step.export_jsonl`, `step.export_csv` | `preprocessing` | Non-CV modality steps |
 
-All annotation work (`step.auto_label`, `step.human_review`, `step.export_yolo`) runs on the CVAT worker.
+`step.human_review` runs on the CVAT worker and `step.auto_label` / `step.train` on worker-training (`training` queue). `step.export_yolo` has no queue override, so it runs here on `preprocessing`.
 
 ---
 
@@ -102,9 +105,8 @@ They are linked by the content hash.
    UPDATE runs SET status = 'succeeded', output_refs = {...}, finished_at = now()
    INSERT events row
    XACK message on Redis Stream
-   POST /internal/runs/{workflow_run_id}/advance
-     { step_run_id, output_refs }
-     → executor resolves next DAG step and enqueues to appropriate stream
+   advance_workflow(session, parent_run_id) — in-process, via process_step
+     → coordinator enqueues the next ready DAG steps to their streams
 
 6. On failure:
    UPDATE runs SET status = 'failed', error = <message>, finished_at = now()
@@ -116,14 +118,13 @@ They are linked by the content hash.
 
 ## Auto-Chain
 
-```
-preprocessing completes step.extract_frames
-    → POST /internal/runs/{id}/advance
-    → executor enqueues step.auto_label to cvat stream
+> **Status (2026-10-10):** `POST /internal/runs/{id}/advance` was never built. Workers advance the DAG **in-process** by calling `advance_workflow` (`services/api/src/cvops_api/engine/coordinator.py`): worker-preprocessing via the engine's `process_step`, worker-cvat via `sync.py`. The `packages/worker-common` runner used by worker-training still POSTs to the missing endpoint, so workflows stall after `step.train` / `step.auto_label` — tracked as #182.
 
-preprocessing completes step.commit_dataset
-    → POST /internal/runs/{id}/advance
-    → executor enqueues step.export_yolo to cvat stream
+```
+preprocessing completes a step (process_step)
+    → advance_workflow(session, parent_run_id)   — in-process
+    → coordinator XADDs whatever the DAG makes ready
+      (e.g. extract_frames → human_review on cvat; commit_dataset → export_yolo on preprocessing)
 ```
 
 ---
@@ -174,7 +175,7 @@ worker-preprocessing:
 | PostgreSQL `commits` + `commit_samples` | Immutable dataset snapshots |
 | PostgreSQL `events` | One row per status transition |
 | MinIO | Frame JPEGs, thumbnail PNGs |
-| API `POST /internal/runs/{id}/advance` | Workflow advance signal |
+| `advance_workflow` (in-process) | Workflow advance — enqueues the next ready steps |
 
 ---
 

@@ -57,7 +57,9 @@ PostgreSQL   job pickup, labeling_jobs, annotation_revisions, blobs — direct a
 MinIO        read images for auto-label, write export artifacts — direct S3/boto3 via StorageBackend
 Redis        consume from cvat stream
 CVAT         REST API — push tasks, upload images, pull completed annotations
-API          POST /internal/runs/{id}/advance — signal executor to chain next steps
+(no API call) chaining is in-process: `process_step` / `handle_cvat_sync` call
+             `advance_workflow` from `cvops_api.engine.coordinator` directly.
+             There is no `POST /internal/runs/{id}/advance` endpoint.
 ```
 
 ---
@@ -71,7 +73,8 @@ REDIS_URL             redis://redis:6379/0
 REDIS_STREAM          cvat
 S3_ENDPOINT           http://garage:3900          # Garage (S3), not MinIO
 S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET / S3_REGION
-WORKER_TOKEN          <shared secret for POST /internal/*>
+WORKER_TOKEN          <shared secret; not validated by the API (#71) — this worker
+                       makes no API calls>
 
 # Sync role (review push/pull — read by cvops_cvat_client)
 CVAT_URL              http://cvat_server:8080     # falls back to CVAT_HOST
@@ -93,7 +96,7 @@ NUCTL_PATH            /abs/path/to/services/worker-cvat/nuctl
 |---|---|---|
 | `step.human_review` | `cvat` | Gate step — push a batch to CVAT for human review, run → `waiting`; resumed by a `cvat_sync` doorbell. **Implemented.** |
 | `step.deploy_model` | `cvat` | Deploy a trained `.pt` model to Nuclio as a CVAT auto-label function. **Implemented** (registered locally by the worker via `DeployModelStep`). |
-| `step.auto_label` | `cvat` | Model inference writing model-sourced `annotation_revisions`. **Stub** (`cvops_steps`). |
+| `step.auto_label` | `training` | Model inference writing model-sourced `annotation_revisions`. **Implemented** in `cvops_steps` (local YOLO runner), but it routes to the `training` queue — **not** a cvat-worker step. |
 | `step.export_yolo` | `preprocessing` | Materialise a committed dataset to YOLO. Runs in `packages/steps`, dispatched on the `preprocessing` queue — **not** a cvat-worker step. |
 
 `step.human_review` comes from `cvops_steps` (registered via `register_all()`);
@@ -103,6 +106,8 @@ NUCTL_PATH            /abs/path/to/services/worker-cvat/nuctl
 ---
 
 ## Auto-Label Flow (step.auto_label)
+
+> **Historical.** `step.auto_label` runs on the `training` queue (worker-training), not here, and takes `sample_ids`. The flow below is the original design.
 
 Triggered via auto-chain from the preprocessing worker after `step.extract_frames` completes.
 
@@ -183,9 +188,8 @@ The API receives `POST /internal/cvat/webhook`, validates `CVAT_WEBHOOK_SECRET`,
 6. UPDATE runs: { status: 'succeeded', output_refs: {annotation_revision_ids} }
 7. INSERT events row
 8. XACK Redis message
-9. POST /internal/runs/{workflow_run_id}/advance
-   { step_run_id, output_refs: {annotation_revision_ids} }
-   → executor enqueues step.commit_dataset to preprocessing stream
+9. advance_workflow(session, parent_run_id) — in-process (worker_cvat/sync.py)
+   → enqueues step.commit_dataset to the preprocessing stream
 ```
 
 Idempotent — if pull flow fires twice (webhook + poll race), `labeling_jobs.status == 'completed'` at step 1 short-circuits the second run.
@@ -241,6 +245,8 @@ Served by a small FastAPI app inside the worker (`MODEL_DEPLOYER_PORT`, default
 
 ## Export Flow (step.export_yolo)
 
+> **Historical.** `step.export_yolo` runs on the `preprocessing` queue, not here. The flow below is the original design.
+
 Triggered via auto-chain from the preprocessing worker after `step.commit_dataset` completes.
 
 ```
@@ -265,24 +271,16 @@ Triggered via auto-chain from the preprocessing worker after `step.commit_datase
 
 ## Auto-Chain Summary
 
-```
-preprocessing completes step.extract_frames
-    → XADD cvat {step.auto_label}
+There is no fixed chain — the workflow DAG decides what comes next. After any
+step finishes, whoever ran it calls `advance_workflow`, which creates the child
+`runs` row for every newly ready step and `XADD`s it to that step's queue:
 
-cvat completes step.auto_label
-    → XADD cvat {step.human_review}
-
-cvat completes step.human_review (gate resolved via CVAT webhook)
-    → XADD preprocessing {step.commit_dataset}
-
-preprocessing completes step.commit_dataset
-    → XADD cvat {step.export_yolo}
-
-cvat completes step.export_yolo
-    → XADD training {step.train}
-```
-
-All chaining goes through `POST /internal/runs/{id}/advance` → executor creates the child run row and does the XADD.
+- `worker-preprocessing` and this worker run steps through `process_step`, which
+  advances in-process; the CVAT pull (`handle_cvat_sync`) also advances in-process.
+- `worker-training` uses `worker-common`'s `JobRunner`, which instead POSTs to
+  `/internal/runs/{id}/advance`. That endpoint does not exist (404, logged at
+  debug), so steps on the `training` queue (`train`, `auto_label`) never advance
+  their workflow — tracked in #182.
 
 ---
 
@@ -333,7 +331,7 @@ CVAT [x1, y1, x2, y2] absolute pixels →
 | PostgreSQL `events` | Status transitions |
 | MinIO | YOLO export tar.gz archive |
 | CVAT REST API | Tasks, images, pre-labels |
-| API `POST /internal/runs/{id}/advance` | Workflow advance signal |
+| Redis `XADD` (via in-process `advance_workflow`) | Next ready steps' doorbells |
 
 ---
 

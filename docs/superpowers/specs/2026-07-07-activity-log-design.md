@@ -1,7 +1,7 @@
 # Design Spec — Activity Log (FEAT-4)
 
 **Date:** 2026-07-07
-**Status:** IN PROGRESS
+**Status:** DONE (PR #173)
 
 ---
 

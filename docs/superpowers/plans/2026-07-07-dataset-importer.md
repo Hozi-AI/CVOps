@@ -1,5 +1,7 @@
 # Dataset Importer Implementation Plan
 
+**Status:** DONE (commits ac29709, 86697a5, 6d581e3)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let users import existing labeled datasets (YOLO, COCO, or raw images) into CVOps via a zip upload or server-side folder path, with an optional CVAT human-review gate before committing.

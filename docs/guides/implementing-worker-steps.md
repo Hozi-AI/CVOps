@@ -9,7 +9,7 @@
 | Package | What it gives you |
 |---|---|
 | `packages/worker-common` | Consumer loop, job runner, DB session factory, storage client. You do not touch this. |
-| `tools/frame-extractor/` | Standalone CLI scripts with working logic (OpenCV, MinIO, PG). Use as reference — port the core logic into your service. |
+| `packages/steps/src/cvops_steps/` | The implemented steps (`extract_frames`, `export_yolo`, `train`, …). Use as reference. (The old `tools/frame-extractor/` CLI scripts were removed in c6c5b85 / 64460d7; specs archived in [`docs/archive/`](../archive/).) |
 | `services/api/src/cvops_api/` | All ORM models, `StorageBackend`, `StepContext`, `GateException`, `emit_event`. Import freely. |
 
 ---
@@ -18,9 +18,11 @@
 
 | Service | Stream | Steps it runs |
 |---|---|---|
-| `services/worker-preprocessing` | `preprocessing` | `step.extract_frames`, `step.commit_dataset` |
-| `services/worker-cvat` | `cvat` | `step.auto_label`, `step.human_review`, `step.export_yolo` |
-| `services/worker-training` | `training` | `step.train` |
+| `services/worker-preprocessing` | `preprocessing` | `step.extract_frames`, `step.import_dataset`, `step.commit_dataset`, `step.export_yolo` (and any step with an empty `queue`) |
+| `services/worker-cvat` | `cvat` | `step.human_review`, `step.deploy_model` |
+| `services/worker-training` | `training` | `step.train`, `step.auto_label` |
+
+> All three now exist. Stream = the step's `queue` attribute.
 
 Each one is a separate directory under `services/`. This guide walks through building one — the pattern is identical for all three.
 
@@ -209,7 +211,9 @@ await ctx.emit_event(
 
 ## 5. Porting Logic from tools/
 
-The working CLI logic lives in `tools/frame-extractor/`. Port the core algorithm, replace the I/O.
+> Historical: `tools/frame-extractor/` has since been removed (c6c5b85, 64460d7) and `extract_frames` is ported — see `packages/steps/src/cvops_steps/extract_frames.py`. The mapping below is kept as a porting reference.
+
+The working CLI logic lived in `tools/frame-extractor/`. Port the core algorithm, replace the I/O.
 
 ### extract_frames — mapping old to new
 
@@ -233,7 +237,7 @@ step.extract_frames
   inputs:  { source_id: str }
   returns: { sample_ids: [str, ...] }
 
-step.auto_label
+step.auto_label          (config: model_version_id required, confidence_threshold, ontology_id)
   inputs:  { sample_ids: [str, ...] }
   returns: { annotation_revision_ids: [str, ...] }
 
@@ -292,7 +296,7 @@ class HumanReviewStep(Step):
         raise GateException({"labeling_job_id": str(job.id)})
 ```
 
-The workflow stays in `status = waiting` until CVAT sends a webhook. The CVAT worker handles the webhook, pulls annotations, and calls `POST /internal/runs/{id}/advance` to resume.
+The workflow stays in `status = waiting` until CVAT sends a webhook. The API receives the webhook and XADDs a `cvat_sync` doorbell; the CVAT worker pulls the annotations and calls `advance_workflow` in-process to resume (there is no `POST /internal/runs/{id}/advance` endpoint).
 
 ---
 

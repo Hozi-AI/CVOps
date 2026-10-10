@@ -1,6 +1,6 @@
 # YOLO Workflow Platform — Design Documentation
 
-> **Status:** Design phase. Nothing here is implemented yet. This is the plan we build against.
+> **Status:** Implemented (2026-10-10). These are the original design docs; the code has since diverged in places — current state and ordering live in [`../ROADMAP.md`](../ROADMAP.md), superseded docs in [`archive/`](./archive/).
 > **Audience:** The team — Yehuda (datasets/versioning/orchestration), Nati & Yahav (extraction + auto-labeling + export), Itai (the synchronous sequence runner).
 
 ---
@@ -65,7 +65,7 @@ Full reasoning in [Principles & Architecture](./01-principles-and-architecture.m
 7. **[API & Dashboard UX](./07-api-and-dashboard-ux.md)** — resource API, schema-driven UI, "everything opened to the user."
 8. **[Controls, Governance & Security](./08-controls-governance-security.md)** — RBAC, validation, audit/lineage, least-privilege, idempotency, observability.
 9. **[Gaps & Considerations](./09-gaps-and-considerations.md)** — the things easy to miss; edge cases, risks, decisions to make. **Read this even if you read nothing else after the data model.**
-10. **[Glossary & Roadmap](./10-glossary-and-roadmap.md)** — terms + a phased build plan (MVP → v1 → scale).
+10. ~~Glossary & Roadmap~~ — archived ([docs/archive/10-glossary-and-roadmap.md](./archive/10-glossary-and-roadmap.md)). Glossary → [MASTER_PLAN §21](./MASTER_PLAN.md#21-glossary); current ordering → [ROADMAP.md](../ROADMAP.md).
 
 ---
 
@@ -74,3 +74,12 @@ Full reasoning in [Principles & Architecture](./01-principles-and-architecture.m
 - **Nati & Yahav** build the *implementations* behind a few **step types** in the registry: `extract_frames`, `auto_label`, `export_yolo`. Each is an artifact-in → artifact-out unit (see [Workflow Engine](./05-workflow-engine.md)).
 - **Itai's** "basic synchronous sequence" is the **first executor** of the workflow engine: a sequential runner over the step contract. Because the contract is fixed, his runner can later be swapped for a queue/DAG engine with no change to the steps.
 - **Yehuda** owns the substrate every doc here describes: data model, versioning, storage, registry, API, controls.
+
+---
+
+## Operational docs (current behaviour)
+
+- **[15 · Keycloak user management](./15-keycloak-user-management.md)** — the planned auth replacement.
+- **[16 · Dataset import](./16-dataset-import.md)** — getting pre-labelled data (YOLO / COCO / raw) into CVOps.
+- **[Service ICDs](./services/)**, **[guides](./guides/)**, **[bug write-ups](./bugs/)**.
+- Superseded docs live in **[archive/](./archive/)**.
