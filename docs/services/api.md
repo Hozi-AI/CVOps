@@ -7,7 +7,7 @@
 
 ## What it is
 
-The orchestration layer. Handles all HTTP from the browser, manages auth, owns all CRUD, runs the workflow executor (Phase 1: in-process via `BackgroundTasks`; Phase 2: dispatches jobs to workers via Redis Streams), and issues presigned URLs for MinIO access.
+The orchestration layer. Handles all HTTP from the browser, manages auth, owns all CRUD, drives the workflow coordinator (`advance_workflow` creates child runs and `XADD`s them to Redis Streams; steps run out-of-process in the workers — see [redis-streams.md](./redis-streams.md)), and issues presigned URLs for Garage (S3) access.
 
 ---
 
@@ -15,8 +15,8 @@ The orchestration layer. Handles all HTTP from the browser, manages auth, owns a
 
 ```
 PostgreSQL   all reads and writes
-MinIO        presigned URL generation only — API never touches bytes
-Redis        locks, cache, SSE pub/sub, job enqueue (Phase 2)
+Garage (S3)  presigned URL generation only — API never touches bytes
+Redis        JWT revocation list, cache, SSE, job enqueue (XADD)
 ```
 
 ---
@@ -25,13 +25,13 @@ Redis        locks, cache, SSE pub/sub, job enqueue (Phase 2)
 
 ```
 DATABASE_URL        postgresql+asyncpg://cvops:<password>@postgres:5432/cvops
-MINIO_ENDPOINT      http://minio:9000
-MINIO_ACCESS_KEY    <minio root user>
-MINIO_SECRET_KEY    <minio root password>
-MINIO_BUCKET        cvops-blobs
+S3_ENDPOINT         http://garage:3900       # internal; presigned URLs use S3_PUBLIC_ENDPOINT or <request host>:S3_PUBLIC_PORT
+S3_ACCESS_KEY       <Garage key, GK…>
+S3_SECRET_KEY       <Garage secret>
+S3_BUCKET           cvops-blobs
 REDIS_URL           redis://redis:6379/0
 JWT_SECRET          <min 32 chars, random>
-WORKER_TOKEN        <long-lived JWT issued to workers>
+WORKER_TOKEN        <shared secret; sent as bearer to the model deployer — not validated on inbound calls (#71)>
 ```
 
 ---
@@ -58,21 +58,20 @@ WORKER_TOKEN        <long-lived JWT issued to workers>
 ## Exposes
 
 ```
-REST API     /api/*                              all endpoints (see MASTER_PLAN §12)
-SSE stream   /api/runs/{id}/events/stream        live run event push
-Webhook      /internal/cvat/webhook              CVAT completion signal receiver
-Health       /internal/health                    {status, db, minio, redis}
+REST API     /api/v1/*                           all endpoints (see MASTER_PLAN §12, README API table)
+SSE stream   /api/v1/runs/{id}/events/stream     live run event push
+Webhook      /api/v1/internal/cvat/webhook       CVAT completion signal (HMAC, CVAT_WEBHOOK_SECRET)
+Health       /api/v1/internal/health             {status} — DB check only
+Liveness     /health                             root, unversioned
 ```
 
 ---
 
-## Phase 1 vs Phase 2 Execution
+## Execution
 
-**Phase 1** — executor runs inside the API process via FastAPI `BackgroundTasks`. No Redis enqueue, no worker containers needed. Steps execute synchronously after the HTTP response is returned.
+> **Updated 2026-10-10.** The in-process `BackgroundTasks` executor ("Phase 1") and `engine/executor.py` are gone. Steps always run out-of-process.
 
-**Phase 2** — API creates a `runs` row, then does `XADD` to the appropriate Redis Stream. Worker containers pick up the job. API never waits for completion.
-
-The switch between phases is in `engine/executor.py` only. No other code changes.
+The API creates a `pending` parent run and calls `advance_workflow` (`engine/coordinator.py`) in-request: it creates a child `runs` row per ready step, freezes its resolved inputs, and `XADD`s a thin `{job_id, step_type, queue}` message to the step's Redis Stream. A per-queue worker claims the child, runs it via `process_step`, and calls `advance_workflow` again. The API never waits for completion. See [redis-streams.md](./redis-streams.md).
 
 ---
 
