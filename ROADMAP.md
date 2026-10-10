@@ -31,7 +31,7 @@ frontend design [`docs/frontend-design-plan.md`](./docs/frontend-design-plan.md)
 
 ## 2. Now — in this order
 
-The two-person split of this list (file ownership, sync points) is pinned as **#204**.
+The two-person split of this list (file ownership, sync points) is pinned as **#204**; phase 2 (Keycloak + frontend features) follows in **#208**.
 
 0. **Keep CI meaningful.** Code-side CI was restored on 2026-10-10 (#201, #202: pinned ruff/mypy, stale tests fixed). Still red for org-admin reasons: #203 (Claude review app, SonarQube).
 1. **Make workflows finish.** #182 training-queue steps never advance the parent · #183 `auto_label` not registered on worker-training. *(P0 — without these, train/auto-label pipelines are unusable.)*
@@ -56,14 +56,21 @@ The two-person split of this list (file ownership, sync points) is pinned as **#
 | [EPIC-6 Infra](https://github.com/Hozi-AI/CVOps/milestone/6) | #87 vendor CVAT config, #89 `.dockerignore`, #90 Dockerfiles, #193 Tilt watch, #194 stray migration |
 | [EPIC-8 Observability](https://github.com/Hozi-AI/CVOps/milestone/8) | #96 structured logs → #97 correlation ids → #99 tracing, #100 error tracking |
 
-## 4. Open decisions
+## 4. Decisions and open questions
 
-1. **Worker → API auth**: shared `WORKER_TOKEN` vs a Keycloak service-account client (#71, #164). #182 removes the only current caller by advancing in-process.
-2. **Deleted-dataset semantics**: what runs/models/exports that reference a soft-deleted dataset show (#149).
-3. **Ontology evolution**: is reordering classes allowed at all, or only via a new ontology version (#52, #109)?
-4. **Observability backend** beyond the dev box's Loki/Prometheus (#96–#100).
-5. **K8s flavour**: managed vs k3s/Rancher (#106).
-6. **model-deployer**: keep, or fold into worker-cvat now that `MODEL_DEPLOYER_URL` points there (#34).
+### Decided (2026-10-10)
+
+1. **Workers never call the API.** Workers advance workflows in-process, writing straight to Postgres and Redis (#182, as worker-cvat already does). `/internal/*` is reject-by-default (#71). The only service call left, API → model-deployer, keeps its shared `WORKER_TOKEN` until #166 replaces it with a Keycloak service-account client. No other shared-secret mechanism is to be built.
+2. **Deleted datasets become tombstones; lineage never breaks** (#149). Dataset routes return 404 for a soft-deleted dataset. References from models, runs and exports keep resolving and show the name with a "deleted" badge. Deleting is never blocked. Commits and blobs live until the retention/GC policy removes them (#112 → #105).
+3. **Class order is immutable within an ontology version** (#52). A class's position is its YOLO class id. Reorder, add or retire creates a new version; display name and colour are editable in place. Exports use the commit's pinned version.
+4. **After the foundation sprint (#204), phase 2 (#208)** runs two tracks: alon1s on Keycloak (EPIC-11), Michaelmo12 on EPIC-2 frontend features. #167 (backend cut-over) and #168 (frontend login) merge on the same day.
+5. **Observability (#96 → #97) is one sweep by one person, after phase 2.** It touches nearly every module, so it must not run alongside feature work.
+
+### Still open
+
+1. **Observability backend** beyond the dev box's Loki/Prometheus (#96–#100).
+2. **K8s flavour**: managed vs k3s/Rancher (#106).
+3. **model-deployer**: keep, or fold into worker-cvat now that `MODEL_DEPLOYER_URL` points there (#34).
 
 ## 5. Unscheduled ideas (no issue on purpose)
 
