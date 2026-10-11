@@ -2,7 +2,7 @@
 # ── pre-commit (git provider) ──────────────────────────────────────────────
 # Runs available linters on staged files only.
 # Fails fast on first linter error.
-# Skips gracefully if tools are not installed.
+# Warns and skips if tools are not installed.
 #
 # jj has no staging step, so this hook is git-only. Under jj, run linting via
 # `jj util exec -- <linter>` or rely on CI; convention checks (messages +
