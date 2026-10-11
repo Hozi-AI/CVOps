@@ -25,12 +25,13 @@ export JUST_OS := os()
 # Git Bash rewrites "/garage"-style args into Windows paths; turn that off.
 export MSYS_NO_PATHCONV := "1"
 export MSYS2_ARG_CONV_EXCL := "*"
-# Host port Redis is published on. Override if 6379 is taken/stuck on your machine:
+# Host ports (postgres / redis / nginx edge) are resolved in `lib` below, the same
+# way the Tiltfile does: shell env > manifests/.env > default. Override if a default
+# is taken on your machine, e.g.:
 #   REDIS_HOST_PORT=6390 just dev
-export REDIS_HOST_PORT := env("REDIS_HOST_PORT", "6379")
 # --progress plain: compose's interactive (tty) progress renderer hung in a real
 # terminal once the apps were running (seen as "Container cvops-nginx-1 Running 0.0s").
-export CVOPS_COMPOSE := "docker compose --progress plain --project-name cvops --env-file manifests/.env -f manifests/docker-compose.yml -f manifests/docker-compose.just.yml"
+export CVOPS_COMPOSE := "docker compose --progress plain --project-name cvops --env-file manifests/.env -f manifests/docker-compose.yml"
 
 alias up := dev
 
@@ -75,6 +76,14 @@ req_env() {
   printf '%s' "$v"
 }
 
+# Host ports the infra containers publish (docker-compose.yml `ports:`) and the host
+# processes connect through. Exported so compose sees the same values.
+# Precedence matches the Tiltfile: shell env > manifests/.env > default.
+export POSTGRES_HOST_PORT=${POSTGRES_HOST_PORT:-$(get_env POSTGRES_HOST_PORT 5432)}
+export REDIS_HOST_PORT=${REDIS_HOST_PORT:-$(get_env REDIS_HOST_PORT 6379)}
+export EDGE_HOST_PORT=${EDGE_HOST_PORT:-$(get_env EDGE_HOST_PORT 80)}
+if [ "$EDGE_HOST_PORT" = 80 ]; then EDGE_URL=http://localhost; else EDGE_URL=http://localhost:$EDGE_HOST_PORT; fi
+
 # Prints a Python >= 3.12 command, or fails. python3 is skipped when it is the
 # Microsoft Store stub (it fails the version probe), and `py -3.12` is the
 # Windows launcher fallback.
@@ -105,10 +114,10 @@ api_py() {
 load_host_env() {
   local u p d
   u=$(req_env POSTGRES_USER); p=$(req_env POSTGRES_PASSWORD); d=$(req_env POSTGRES_DB)
-  export DATABASE_URL="postgresql+asyncpg://$u:$p@localhost:5432/$d"
+  export DATABASE_URL="postgresql+asyncpg://$u:$p@localhost:${POSTGRES_HOST_PORT}/$d"
   # 127.0.0.1, not localhost: on Windows "localhost" resolves to ::1 first and Docker
   # Desktop's IPv6 port forward hangs, so the redis client times out.
-  export REDIS_URL="redis://127.0.0.1:${REDIS_HOST_PORT:-6379}/0"
+  export REDIS_URL="redis://127.0.0.1:${REDIS_HOST_PORT}/0"
   export S3_ENDPOINT="http://localhost:3900"
   export S3_ACCESS_KEY=$(req_env GARAGE_DEFAULT_ACCESS_KEY)
   export S3_SECRET_KEY=$(req_env GARAGE_DEFAULT_SECRET_KEY)
@@ -317,6 +326,8 @@ dev: prepare
     load_host_env
     VPY=$(api_py)
     export VITE_MLFLOW_URL=$(get_env VITE_MLFLOW_URL http://localhost:5000)
+    # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge. Same as the Tiltfile.
+    export VITE_HMR_CLIENT_PORT=${VITE_HMR_CLIENT_PORT:-$(get_env VITE_HMR_CLIENT_PORT)}
     export REDIS_STREAM=preprocessing
     start_bg api bash -c 'cd services/api && exec "$0" -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload' "$VPY"
     start_bg worker bash -c 'cd services/api && exec "$0" -m cvops_worker' "$VPY"
@@ -359,14 +370,14 @@ dev: prepare
     read -r wpid < .just/pids/worker.pid || true
     if ! kill -0 "${wpid%$'\r'}" 2>/dev/null; then
       tail -n 15 .just/logs/worker.log >&2 || true
-      die "worker exited — see .just/logs/worker.log (is Redis reachable on port ${REDIS_HOST_PORT:-6379}?)"
+      die "worker exited — see .just/logs/worker.log (is Redis reachable on port ${REDIS_HOST_PORT}?)"
     fi
     ok "worker is running"
-    http_ok 80 / || die "nginx is not answering on port 80 — see: just status"
+    http_ok "$EDGE_HOST_PORT" / || die "nginx is not answering on port $EDGE_HOST_PORT — see: just status"
     ok "nginx is up"
     [ -z "${NAP_PID:-}" ] || kill "$NAP_PID" 2>/dev/null || true
     echo
-    ok "app (nginx)  http://localhost"
+    ok "app (nginx)  $EDGE_URL"
     ok "vite dev     http://localhost:5173"
     ok "swagger      http://localhost:8000/docs"
     echo "  stop host processes: just stop    |    stop everything: just down    |    logs: just logs"
@@ -398,6 +409,8 @@ worker:
 frontend:
     {{lib}}
     export VITE_MLFLOW_URL=$(get_env VITE_MLFLOW_URL http://localhost:5000)
+    # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge. Same as the Tiltfile.
+    export VITE_HMR_CLIENT_PORT=${VITE_HMR_CLIENT_PORT:-$(get_env VITE_HMR_CLIENT_PORT)}
     cd services/frontend
     exec node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173
 
@@ -419,7 +432,7 @@ status:
     need_docker
     $CVOPS_COMPOSE ps
     echo
-    for pair in "api:http://localhost:8000/openapi.json" "frontend:http://localhost:5173/" "nginx:http://localhost/"; do
+    for pair in "api:http://localhost:8000/openapi.json" "frontend:http://localhost:5173/" "nginx:$EDGE_URL/"; do
       name=${pair%%:*}; url=${pair#*:}
       if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then ok "$name up ($url)"; else warn "$name not answering ($url)"; fi
     done
