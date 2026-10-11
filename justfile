@@ -25,9 +25,10 @@ export JUST_OS := os()
 # Git Bash rewrites "/garage"-style args into Windows paths; turn that off.
 export MSYS_NO_PATHCONV := "1"
 export MSYS2_ARG_CONV_EXCL := "*"
-# Host ports (postgres / redis / nginx edge) are resolved in `lib` below, the same
-# way the Tiltfile does: shell env > manifests/.env > default. Override if a default
-# is taken on your machine, e.g.:
+# Host ports (postgres / redis / nginx edge) are resolved in `lib` below:
+# shell env > manifests/.env > default. (The Tiltfile differs: it reads postgres/redis
+# only from manifests/.env, ignores the shell, and has no EDGE_HOST_PORT.) Override if a
+# default is taken on your machine, e.g.:
 #   REDIS_HOST_PORT=6390 just dev
 # --progress plain: compose's interactive (tty) progress renderer hung in a real
 # terminal once the apps were running (seen as "Container cvops-nginx-1 Running 0.0s").
@@ -78,7 +79,9 @@ req_env() {
 
 # Host ports the infra containers publish (docker-compose.yml `ports:`) and the host
 # processes connect through. Exported so compose sees the same values.
-# Precedence matches the Tiltfile: shell env > manifests/.env > default.
+# Precedence: shell env > manifests/.env > default. This is the justfile's own behaviour —
+# the Tiltfile reads postgres/redis only from manifests/.env (no shell override) and
+# has no EDGE_HOST_PORT — so don't "fix" one side to match the other.
 export POSTGRES_HOST_PORT=${POSTGRES_HOST_PORT:-$(get_env POSTGRES_HOST_PORT 5432)}
 export REDIS_HOST_PORT=${REDIS_HOST_PORT:-$(get_env REDIS_HOST_PORT 6379)}
 export EDGE_HOST_PORT=${EDGE_HOST_PORT:-$(get_env EDGE_HOST_PORT 80)}
@@ -326,8 +329,10 @@ dev: prepare
     load_host_env
     VPY=$(api_py)
     export VITE_MLFLOW_URL=$(get_env VITE_MLFLOW_URL http://localhost:5000)
-    # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge. Same as the Tiltfile.
-    export VITE_HMR_CLIENT_PORT=${VITE_HMR_CLIENT_PORT:-$(get_env VITE_HMR_CLIENT_PORT)}
+    # HMR websocket port the browser dials (vite.config.ts). The browser reaches Vite through
+    # the nginx edge, so default to EDGE_HOST_PORT — left empty, vite.config.ts assumes :80 and
+    # the websocket hits the wrong server on a non-80 edge. `auto` and explicit values still win.
+    export VITE_HMR_CLIENT_PORT=${VITE_HMR_CLIENT_PORT:-$(get_env VITE_HMR_CLIENT_PORT "$EDGE_HOST_PORT")}
     export REDIS_STREAM=preprocessing
     start_bg api bash -c 'cd services/api && exec "$0" -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload' "$VPY"
     start_bg worker bash -c 'cd services/api && exec "$0" -m cvops_worker' "$VPY"
@@ -409,8 +414,10 @@ worker:
 frontend:
     {{lib}}
     export VITE_MLFLOW_URL=$(get_env VITE_MLFLOW_URL http://localhost:5000)
-    # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge. Same as the Tiltfile.
-    export VITE_HMR_CLIENT_PORT=${VITE_HMR_CLIENT_PORT:-$(get_env VITE_HMR_CLIENT_PORT)}
+    # HMR websocket port the browser dials (vite.config.ts). The browser reaches Vite through
+    # the nginx edge, so default to EDGE_HOST_PORT — left empty, vite.config.ts assumes :80 and
+    # the websocket hits the wrong server on a non-80 edge. `auto` and explicit values still win.
+    export VITE_HMR_CLIENT_PORT=${VITE_HMR_CLIENT_PORT:-$(get_env VITE_HMR_CLIENT_PORT "$EDGE_HOST_PORT")}
     cd services/frontend
     exec node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173
 
