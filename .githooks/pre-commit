@@ -2,7 +2,7 @@
 # ── pre-commit (git provider) ──────────────────────────────────────────────
 # Runs available linters on staged files only.
 # Fails fast on first linter error.
-# Skips gracefully if tools are not installed.
+# Warns and skips if tools are not installed.
 #
 # jj has no staging step, so this hook is git-only. Under jj, run linting via
 # `jj util exec -- <linter>` or rely on CI; convention checks (messages +
@@ -19,22 +19,34 @@ fi
 PY_FILES=$(printf '%s\n' $STAGED | grep -E '\.py$' || true)
 
 if [ -n "$PY_FILES" ]; then
-  # black — formatting check
-  if command -v black >/dev/null 2>&1; then
-    printf '%s\n' $PY_FILES | xargs black --check --quiet 2>&1
-    if [ $? -ne 0 ]; then
-      printf '\n  \033[31mpre-commit: black formatting failed\033[0m\n'
-      printf '  Run: black .\n\n'
-      PASS=false
-    fi
+  # ruff — lint + format check. Only services/api declares a ruff config (and CI
+  # lints just that tree), so the check is scoped to it to match CI.
+  RUFF_PY_FILES=$(printf '%s\n' $PY_FILES | grep -E '^services/api/' || true)
+  RUFF_CONFIG="services/api/pyproject.toml"
+  RUFF_BIN=""
+  if [ -x "services/api/.venv/bin/ruff" ]; then
+    RUFF_BIN="services/api/.venv/bin/ruff"   # pinned version from the api dev extras
+  elif command -v ruff >/dev/null 2>&1; then
+    RUFF_BIN="ruff"
   fi
 
-  # flake8 — style + errors
-  if command -v flake8 >/dev/null 2>&1; then
-    printf '%s\n' $PY_FILES | xargs flake8 --max-line-length=100 2>&1
-    if [ $? -ne 0 ]; then
-      printf '\n  \033[31mpre-commit: flake8 check failed\033[0m\n\n'
-      PASS=false
+  if [ -n "$RUFF_PY_FILES" ]; then
+    if [ -z "$RUFF_BIN" ]; then
+      printf '\n  \033[33mpre-commit: ruff not installed — skipping Python lint/format\033[0m\n'
+      printf '  Run: pip install -e "services/api[dev]"\n\n'
+    else
+      printf '%s\n' $RUFF_PY_FILES | xargs "$RUFF_BIN" check --config "$RUFF_CONFIG" 2>&1
+      if [ $? -ne 0 ]; then
+        printf '\n  \033[31mpre-commit: ruff check failed\033[0m\n\n'
+        PASS=false
+      fi
+
+      printf '%s\n' $RUFF_PY_FILES | xargs "$RUFF_BIN" format --check --config "$RUFF_CONFIG" 2>&1
+      if [ $? -ne 0 ]; then
+        printf '\n  \033[31mpre-commit: ruff format check failed\033[0m\n'
+        printf '  Run: ruff format --config %s <files>\n\n' "$RUFF_CONFIG"
+        PASS=false
+      fi
     fi
   fi
 
@@ -51,24 +63,25 @@ if [ -n "$PY_FILES" ]; then
 fi
 
 # ── TypeScript / JavaScript ────────────────────────────────────────────────
-TS_FILES=$(printf '%s\n' $STAGED | grep -E '\.(ts|tsx|js|jsx)$' || true)
+TS_FILES=$(printf '%s\n' $STAGED | grep -E '^services/frontend/.*\.(ts|tsx|js|jsx)$' || true)
 
 if [ -n "$TS_FILES" ]; then
-  # ESLint
-  if command -v npx >/dev/null 2>&1 && [ -f "package.json" ]; then
-    ESLINT_CONFIG=$(ls .eslintrc* eslint.config.* 2>/dev/null | head -1)
-    if [ -n "$ESLINT_CONFIG" ] || grep -q '"eslint"' package.json 2>/dev/null; then
-      printf '%s\n' $TS_FILES | xargs npx eslint --max-warnings 0 2>&1
-      if [ $? -ne 0 ]; then
-        printf '\n  \033[31mpre-commit: ESLint check failed\033[0m\n\n'
-        PASS=false
-      fi
+  # package.json / tsconfig.json / eslint config all live in services/frontend,
+  # so run the same checks as `npm run lint` / `npm run typecheck` from there.
+  if [ ! -x "services/frontend/node_modules/.bin/eslint" ] || [ ! -x "services/frontend/node_modules/.bin/tsc" ]; then
+    printf '\n  \033[33mpre-commit: frontend deps not installed — skipping ESLint/tsc\033[0m\n'
+    printf '  Run: (cd services/frontend && npm install)\n\n'
+  else
+    # ESLint (staged files only; paths made relative to the frontend dir)
+    FE_FILES=$(printf '%s\n' $TS_FILES | sed 's|^services/frontend/||')
+    (cd services/frontend && printf '%s\n' $FE_FILES | xargs npx eslint --max-warnings 0 --no-warn-ignored 2>&1)
+    if [ $? -ne 0 ]; then
+      printf '\n  \033[31mpre-commit: ESLint check failed\033[0m\n\n'
+      PASS=false
     fi
-  fi
 
-  # TypeScript compiler check (tsc --noEmit)
-  if command -v npx >/dev/null 2>&1 && [ -f "tsconfig.json" ]; then
-    npx tsc --noEmit 2>&1
+    # TypeScript compiler check (tsc --noEmit) — whole project, like CI
+    (cd services/frontend && npx tsc --noEmit 2>&1)
     if [ $? -ne 0 ]; then
       printf '\n  \033[31mpre-commit: TypeScript type check failed\033[0m\n\n'
       PASS=false
