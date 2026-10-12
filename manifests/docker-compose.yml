@@ -112,8 +112,6 @@ services:
       MODEL_DEPLOYER_URL: http://worker-cvat:8001
       # Verifies HMAC signatures on CVAT review-completion webhooks.
       CVAT_WEBHOOK_SECRET: ${CVAT_WEBHOOK_SECRET}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock  # required for step.train Docker dispatch
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
       interval: 10s
