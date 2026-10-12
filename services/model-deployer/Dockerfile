@@ -25,4 +25,13 @@ COPY services/model-deployer/ ./
 RUN chmod +x entrypoint.sh
 COPY services/model-deployer/bootstrap/ /bootstrap/
 
+# Run as an unprivileged user. entrypoint.sh drives docker/nuctl, so the
+# container must be given access to the Docker socket's group at run time
+# (compose `group_add: [<docker gid>]`, as the nuclio service does).
+ENV HOME=/app
+RUN groupadd --system --gid 1001 app && \
+    useradd  --system --uid 1001 --gid app --home /app --shell /usr/sbin/nologin app && \
+    chown -R 1001:1001 /app /bootstrap
+USER 1001:1001
+
 CMD ["./entrypoint.sh"]
