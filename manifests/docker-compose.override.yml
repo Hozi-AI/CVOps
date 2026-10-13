@@ -408,7 +408,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     group_add:
-      - "962"
+      - "${DOCKER_GID:-962}"
     security_opt:
       - label:disable
     environment:
