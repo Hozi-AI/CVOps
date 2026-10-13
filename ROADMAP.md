@@ -70,7 +70,7 @@ The two-person split of this list (file ownership, sync points) is pinned as **#
 
 1. **Observability backend** beyond the dev box's Loki/Prometheus (#96–#100).
 2. **K8s flavour**: managed vs k3s/Rancher (#106).
-3. **model-deployer**: keep, or fold into worker-cvat now that `MODEL_DEPLOYER_URL` points there (#34).
+3. **model-deployer**: decided in #34: it stays in the tree as legacy and is no longer updated. `worker-cvat` owns `/models` and `/deploy`. Remove it when convenient.
 
 ## 5. Unscheduled ideas (no issue on purpose)
 

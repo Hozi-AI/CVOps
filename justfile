@@ -129,6 +129,7 @@ load_host_env() {
   export JWT_SECRET=$(req_env JWT_SECRET)
   export WORKER_TOKEN=$(req_env WORKER_TOKEN)
   export CVAT_WEBHOOK_SECRET=$(req_env CVAT_WEBHOOK_SECRET)
+  # Name is historical: this is worker-cvat's :8001 (services/model-deployer is legacy).
   export MODEL_DEPLOYER_URL="http://localhost:8001"
   export PYTHONUNBUFFERED=1
 }
