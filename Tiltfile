@@ -460,6 +460,7 @@ api_env = {
     'CVAT_WEBHOOK_SECRET': envreq('CVAT_WEBHOOK_SECRET'),
     'PYTHONUNBUFFERED': '1',
     # worker-cvat exposes GET /models on port 8001 (proxied by cvats.py router).
+    # The name is historical: services/model-deployer is legacy and not run.
     'MODEL_DEPLOYER_URL': 'http://localhost:8001',
 }
 

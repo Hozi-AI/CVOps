@@ -351,7 +351,7 @@ POST /workflows/{id}/runs  →  201 {"id": "...", "status": "pending"}
 | `services/worker-preprocessing` | Python · Redis Streams | ✅ Complete | Consumes the `preprocessing` stream; runs steps out of the API process |
 | `services/worker-cvat` | Python · Redis Streams | ✅ Implemented | Consumes the `cvat` stream: `human_review` push/pull with CVAT, `deploy_model` to Nuclio (opt-in, `tilt up -- --cvat`) |
 | `services/worker-training` | Python · Redis Streams · Docker | ✅ Implemented | Consumes the `training` stream: `train`, `auto_label` (opt-in, `tilt up -- --training`) |
-| `services/model-deployer` | Python · FastAPI | ✅ Implemented | Internal service: deploys `.pt` models to CVAT via Nuclio; bearer-authenticated with `WORKER_TOKEN` |
+| `services/model-deployer` | Python · FastAPI | ⚠️ Legacy | Superseded by `worker-cvat` (which now serves `/models` and `/deploy` on :8001). Not run by compose or Tilt and no longer updated |
 
 ---
 
