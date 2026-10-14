@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useModel, useModelArtifacts, usePatchModel, useUploadArtifact, useWeightsUrl } from '../api/models'
 import { usePinProject } from '../lib/useActiveProject'
-import { Breadcrumbs, Button, Card, ErrorState, Field, Input, SkeletonList } from '../components/ui'
+import { BackButton, Breadcrumbs, Button, Card, ErrorState, Field, Input, SkeletonList } from '../components/ui'
 import { mlflowRunUrl } from '../lib/mlflow'
 import { formatValue } from '../lib/format'
 import { toast } from '../store/toast'
@@ -67,12 +67,16 @@ export default function ModelDetail() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Models', to: `/projects/${model.project_id}/models` },
-          { label: model.name ?? id?.slice(0, 8) ?? '', mono: !model.name },
-        ]}
-      />
+      <div className="mb-6 flex items-center gap-2">
+        <BackButton to={`/projects/${model.project_id}/models`} label="Models" />
+        <Breadcrumbs
+          className="mb-0"
+          items={[
+            { label: 'Models', to: `/projects/${model.project_id}/models` },
+            { label: model.name ?? id?.slice(0, 8) ?? '', mono: !model.name },
+          ]}
+        />
+      </div>
 
       <Card className="mb-4 p-6">
         <div className="mb-4 flex items-center justify-between">
