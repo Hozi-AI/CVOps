@@ -456,14 +456,27 @@ async def test_cvat_delete_shared_function_only_releases_claim(factory) -> None:
 
 
 async def test_cvat_delete_deployer_error_keeps_claim(factory) -> None:
+    """A failed delete must not release the claim, so the delete can be retried."""
     fn = _model_name()
     user, _project, _mv_id = await _seed(factory)
     await _own(factory, user, fn)
-    with respx.mock as mock:
-        mock.delete(f"{cvat.DEPLOYER_URL}/models/{fn}").mock(
-            return_value=httpx.Response(500, text="nope")
+    with respx.mock(assert_all_called=True) as mock:
+        # First call: the deployer fails. Second call (the retry): it succeeds.
+        route = mock.delete(f"{cvat.DEPLOYER_URL}/models/{fn}").mock(
+            side_effect=[
+                httpx.Response(500, text="nope"),
+                httpx.Response(200, json={"deleted": fn}),
+            ]
         )
         async with _client(factory, user) as c:
-            res = await c.delete(f"/cvat/models/{fn}")
-    assert res.status_code == 502, res.text
-    assert len(await _owned(factory, user)) == 1
+            failed = await c.delete(f"/cvat/models/{fn}")
+            owned_after_failure = await _owned(factory, user)
+            retried = await c.delete(f"/cvat/models/{fn}")
+    assert failed.status_code == 502, failed.text
+    assert "nope" in failed.json()["detail"]
+    # Claim survives the failure, so the org can still see and retry the delete...
+    assert len(owned_after_failure) == 1
+    # ...and the retry goes through and only then releases it.
+    assert retried.status_code == 200, retried.text
+    assert route.call_count == 2
+    assert await _owned(factory, user) == []
