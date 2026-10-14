@@ -27,7 +27,8 @@ _DEPLOYER_HEADERS = {"Authorization": f"Bearer {settings.WORKER_TOKEN}"}
 def _function_name(model_name: str) -> str:
     """Nuclio function name the deployer will give ``model_name``.
 
-    Mirrors ``_slugify`` in services/model-deployer/deployer.py. Needed up front
+    Mirrors ``slugify`` in services/worker-cvat/src/worker_cvat/deployer.py (the
+    live deployer; the legacy model-deployer uses the same rule). Needed up front
     so a name already owned by another org is refused *before* the deployer
     overwrites that org's function.
     """
