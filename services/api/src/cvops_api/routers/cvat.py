@@ -37,6 +37,10 @@ def _function_name(model_name: str) -> str:
 
 
 async def _get_model_version(mv_id: uuid.UUID, user: User, session: AsyncSession) -> ModelVersion:
+    """Load a model version, or 404 if it doesn't exist or its project is in another org.
+
+    Both cases return the same 404 so a caller can't tell whether an id exists.
+    """
     r = await session.execute(select(ModelVersion).where(ModelVersion.id == mv_id))
     mv = r.scalar_one_or_none()
     if mv is None:
@@ -48,6 +52,7 @@ async def _get_model_version(mv_id: uuid.UUID, user: User, session: AsyncSession
 
 
 async def _check_project(project_id: uuid.UUID, user: User, session: AsyncSession) -> None:
+    """404 unless the project exists, isn't deleted, and belongs to the caller's org."""
     r = await session.execute(
         select(Project.id).where(
             Project.id == project_id,
@@ -60,6 +65,7 @@ async def _check_project(project_id: uuid.UUID, user: User, session: AsyncSessio
 
 
 async def _owned_function_names(user: User, session: AsyncSession) -> set[str]:
+    """Names of the Nuclio functions the caller's org owns (used to filter the CVAT list)."""
     r = await session.execute(
         select(CvatDeployment.function_name).where(
             CvatDeployment.org_id == user.org_id,
@@ -70,6 +76,7 @@ async def _owned_function_names(user: User, session: AsyncSession) -> set[str]:
 
 
 async def _get_deployment(function_id: str, user: User, session: AsyncSession) -> CvatDeployment:
+    """The caller's org's ownership row for a function, or 404 if the org doesn't own it."""
     r = await session.execute(
         select(CvatDeployment).where(
             CvatDeployment.org_id == user.org_id,
