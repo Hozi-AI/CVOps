@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Optional
 
-from sqlalchemy import ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -98,4 +98,43 @@ class ModelArtifact(Base, EntityBase):
         return (
             f"<ModelArtifact id={self.id!r} model_version_id={self.model_version_id!r} "
             f"filename={self.filename!r}>"
+        )
+
+
+class CvatDeployment(Base, EntityBase):
+    """
+    Records which org owns a model deployed to CVAT as a Nuclio function.
+
+    Nuclio functions live in one namespace shared by every tenant, so the
+    function itself carries no owner. One row per (org, function) is what lets
+    list/delete/annotate be scoped to the caller's org. The same function may
+    have rows for several orgs (a shared model); it is only removed from CVAT
+    once the last org releases it. ``model_version_id`` is null for functions
+    deployed from a raw .pt upload.
+    """
+
+    __tablename__ = "cvat_deployments"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), nullable=False, index=True)
+    function_name: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    model_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("model_versions.id"), nullable=True, index=True
+    )
+
+    __table_args__ = (
+        # Partial so a released deployment doesn't block the org re-deploying it.
+        Index(
+            "uq_cvat_deployments_org_function",
+            "org_id",
+            "function_name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CvatDeployment id={self.id!r} org_id={self.org_id!r} "
+            f"function_name={self.function_name!r}>"
         )
