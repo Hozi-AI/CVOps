@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { useSamples } from '../api/samples'
 import type { Sample } from '../api/samples'
 import { SampleGrid } from '../components/dataset/SampleGrid'
@@ -8,7 +8,7 @@ import { parseSampleFilters } from '../lib/sampleFilters'
 import { BulkActionBar } from '../components/samples/BulkActionBar'
 import { SampleEditDrawer } from '../components/samples/SampleEditDrawer'
 import { useSelectionStore } from '../store/selection'
-import { Breadcrumbs, ErrorState } from '../components/ui'
+import { BackButton, Breadcrumbs, ErrorState } from '../components/ui'
 import { cn } from '../lib/cn'
 
 export default function SampleBrowser() {
@@ -16,6 +16,9 @@ export default function SampleBrowser() {
   const [params] = useSearchParams()
   const filters = useMemo(() => parseSampleFilters(params), [params])
   const filterKey = params.toString()
+  const location = useLocation()
+  // The Data Sources "View samples" link marks where the user came from; only then is "back" meaningful.
+  const cameFromDataSources = (location.state as { from?: string } | null)?.from === 'data-sources'
 
   const { data, isLoading, isError, refetch, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useSamples(projectId, filters)
@@ -45,7 +48,10 @@ export default function SampleBrowser() {
     <div className="mx-auto max-w-7xl p-6 pb-24">
       <Breadcrumbs items={[{ label: 'Project', to: `/projects/${projectId}` }, { label: 'Samples' }]} />
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-start gap-3">
+        {cameFromDataSources && projectId && (
+          <BackButton to={`/projects/${projectId}/data-sources`} label="Data Sources" className="-mt-1" />
+        )}
         <div>
           <h2 className="text-xl font-bold text-text-primary">Samples</h2>
           {totalLoaded > 0 && (

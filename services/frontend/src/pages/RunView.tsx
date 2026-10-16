@@ -4,7 +4,7 @@ import { usePinProject } from '../lib/useActiveProject'
 import { StepRunCard } from '../components/runs/StepRunCard'
 import { GateResolutionBanner } from '../components/runs/GateResolutionBanner'
 import type { RunStep } from '../components/runs/types'
-import { Breadcrumbs, Button, Card, EmptyState, SkeletonList, StatusPill } from '../components/ui'
+import { BackButton, Breadcrumbs, Button, Card, EmptyState, SkeletonList, StatusPill } from '../components/ui'
 
 function stepLabel(typeKey: string) {
   return typeKey.replace('step.', '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -86,7 +86,16 @@ export default function RunView() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <Breadcrumbs items={[{ label: 'Projects', to: '/projects' }, { label: `Run ${id?.slice(0, 8)}`, mono: true }]} />
+      <div className="mb-6 flex items-center gap-2">
+        <BackButton
+          to={run ? `/projects/${run.project_id}/runs` : '/projects'}
+          label={run ? 'Runs' : 'Projects'}
+        />
+        <Breadcrumbs
+          className="mb-0"
+          items={[{ label: 'Projects', to: '/projects' }, { label: `Run ${id?.slice(0, 8)}`, mono: true }]}
+        />
+      </div>
 
       {run && (
         <Card className="mb-4 flex items-center justify-between px-5 py-4">
