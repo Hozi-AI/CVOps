@@ -114,18 +114,14 @@ for stream, msgs in messages:
 
 Workers do not pick the next step themselves. After a step finishes, the worker calls
 `advance_workflow(session, parent_run_id, actor)` from
-`cvops_api.engine.coordinator` **in-process** (worker-preprocessing and worker-cvat
-via `process_step`; the CVAT pull via `worker_cvat/sync.py`). The coordinator then:
+`cvops_api.engine.coordinator` **in-process** (worker-preprocessing, worker-cvat and
+worker-training via `process_step`, the latter through `packages/worker-common`'s
+`run_job`; the CVAT pull via `worker_cvat/sync.py`). The coordinator then:
 1. Resolves the next ready steps in the workflow DAG
 2. Creates their child `runs` rows in PG with frozen `input_refs`
 3. Does `XADD` to each step's queue (`Step.queue`, empty → `preprocessing`)
 
 All DAG logic stays in the coordinator; steps never know what comes next.
-
-**Known gap:** worker-training uses `packages/worker-common`'s `JobRunner`, which
-still POSTs to the non-existent advance endpoint (404, logged at debug). Steps on
-the `training` queue (`train`, `auto_label`) therefore never advance their
-workflow — tracked in #182.
 
 Example ingest DAG (queues in brackets):
 
