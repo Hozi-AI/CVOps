@@ -17,6 +17,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from cvops_api.config import settings
 from cvops_api.core.auth import get_current_user
 from cvops_api.core.registry import registry
 from cvops_api.db.session import get_session
@@ -173,3 +174,92 @@ async def test_import_unknown_project_404(factory, import_steps) -> None:
         )
 
     assert res.status_code == 404
+
+
+# ── server-path import is allow-listed (#185) ──────────────────────────────
+
+
+async def _runs_in(factory, project: Project) -> int:
+    async with factory() as s:
+        rows = (await s.execute(select(Run).where(Run.project_id == project.id))).scalars().all()
+        return len(rows)
+
+
+async def test_import_folder_path_disabled_by_default_422(factory, import_steps) -> None:
+    user, project, ont = await _seed(factory)
+
+    with patch.object(settings, "IMPORT_ROOTS", ""):
+        async with _client(factory, user) as c:
+            res = await c.post(
+                f"/projects/{project.id}/imports",
+                json={"folder_path": "/data/anything", "ontology_id": str(ont.id)},
+            )
+
+    assert res.status_code == 422, res.text
+    assert "disabled" in res.json()["detail"]
+    assert await _runs_in(factory, project) == 0
+
+
+async def test_import_folder_path_outside_root_422(factory, import_steps, tmp_path) -> None:
+    user, project, ont = await _seed(factory)
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+
+    with patch.object(settings, "IMPORT_ROOTS", str(allowed)):
+        async with _client(factory, user) as c:
+            for bad in ("/etc", str(tmp_path / "other"), str(allowed / ".." / "other")):
+                res = await c.post(
+                    f"/projects/{project.id}/imports",
+                    json={"folder_path": bad, "ontology_id": str(ont.id)},
+                )
+                assert res.status_code == 422, (bad, res.text)
+                assert "outside" in res.json()["detail"]
+
+    assert await _runs_in(factory, project) == 0
+
+
+async def test_import_folder_path_inside_root_creates_run(
+    factory, fake_redis, import_steps, tmp_path
+) -> None:
+    user, project, ont = await _seed(factory)
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    # The folder lives on the worker's disk, not the API's, so it need not exist here.
+    folder = str(allowed / "cars")
+
+    with patch.object(settings, "IMPORT_ROOTS", str(allowed)):
+        async with _client(factory, user) as c:
+            res = await c.post(
+                f"/projects/{project.id}/imports",
+                json={"folder_path": folder, "ontology_id": str(ont.id)},
+            )
+
+    assert res.status_code == 201, res.text
+    async with factory() as s:
+        child = (
+            (await s.execute(select(Run).where(Run.step_type == "step.import_dataset")))
+            .scalars()
+            .all()
+        )
+        assert any(c.input_refs.get("folder_path") == folder for c in child)
+
+
+@pytest.mark.parametrize(
+    ("roots", "message"), [("relative/imports", "absolute"), ("/", "filesystem root")]
+)
+async def test_import_folder_path_misconfigured_roots_422(
+    factory, import_steps, roots: str, message: str
+) -> None:
+    # A bad IMPORT_ROOTS fails closed: even "/etc" under a root of "/" is refused.
+    user, project, ont = await _seed(factory)
+
+    with patch.object(settings, "IMPORT_ROOTS", roots):
+        async with _client(factory, user) as c:
+            res = await c.post(
+                f"/projects/{project.id}/imports",
+                json={"folder_path": "/etc", "ontology_id": str(ont.id)},
+            )
+
+    assert res.status_code == 422, res.text
+    assert message in res.json()["detail"]
+    assert await _runs_in(factory, project) == 0

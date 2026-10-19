@@ -1,0 +1,109 @@
+"""Safety checks for dataset import: which server folders may be read, and what a zip may hold.
+
+Used by the import API route (fast feedback) and by the ``import_dataset`` step
+(authoritative: workflows can reach the step without going through the route).
+"""
+
+from __future__ import annotations
+
+import zipfile
+from pathlib import Path, PureWindowsPath
+
+# Only judge the compression ratio of files bigger than this; tiny files compress oddly.
+_RATIO_MIN_SIZE = 1024 * 1024
+
+
+def import_roots(raw: str) -> list[Path]:
+    """Parse ``IMPORT_ROOTS`` (comma-separated) into resolved absolute directories.
+
+    Fails closed: a misconfigured entry raises ``ValueError`` (the API turns it into a
+    ``422``, the worker fails the run) rather than being dropped or guessed at.
+    Relative entries are refused because the API and the worker run with different working
+    directories, so the same text would allow different folders in each. An entry that
+    resolves to the filesystem root is refused because it would allow every path.
+    """
+    roots: list[Path] = []
+    for part in raw.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        path = Path(entry)
+        if not path.is_absolute():
+            raise ValueError(f"IMPORT_ROOTS entries must be absolute paths (got {entry!r})")
+        resolved = path.resolve()
+        if resolved == Path(resolved.anchor):
+            raise ValueError(f"IMPORT_ROOTS must not include the filesystem root (got {entry!r})")
+        roots.append(resolved)
+    return roots
+
+
+def resolve_import_folder(raw: str, roots: list[Path], *, check_exists: bool = True) -> Path:
+    """Return the real path of ``raw`` if it lies inside one of ``roots``, else raise ``ValueError``.
+
+    ``Path.resolve()`` follows symlinks and ``..``, so neither can be used to climb out of
+    a root. Containment is checked before existence so a caller cannot probe which paths
+    exist outside the roots. The API passes ``check_exists=False`` because the worker, not
+    the API, owns the filesystem the folder lives on.
+    """
+    if not roots:
+        raise ValueError("Server-path import is disabled (IMPORT_ROOTS is not set)")
+    path = Path(raw)
+    if not path.is_absolute():
+        raise ValueError("folder_path must be an absolute path")
+    resolved = path.resolve()
+    if not any(resolved.is_relative_to(root) for root in roots):
+        raise ValueError("folder_path is outside the allowed import folders (IMPORT_ROOTS)")
+    if check_exists and not resolved.is_dir():
+        raise ValueError("folder_path is not a directory")
+    return resolved
+
+
+def _is_unsafe_name(name: str) -> bool:
+    """True for absolute paths, drive letters, or any ``..`` path component."""
+    normalized = name.replace("\\", "/")
+    return (
+        normalized.startswith("/")
+        or bool(PureWindowsPath(name).drive)
+        or ".." in normalized.split("/")
+    )
+
+
+def check_zip(
+    zf: zipfile.ZipFile,
+    *,
+    archive_size: int,
+    max_bytes: int,
+    max_entries: int,
+    max_ratio: int,
+) -> None:
+    """Raise ``ValueError`` if the archive is too big, too crowded, or has unsafe member names.
+
+    Reads only the archive's directory, so nothing is unpacked yet. The sizes are the ones
+    the archive declares; ``zipfile`` stops reading a member at its declared size.
+
+    ``archive_size`` is the length of the zip file itself. The compression ratio is judged
+    both per large file and for the archive as a whole (total unpacked size over
+    ``archive_size``), so a bomb split into many files just under the per-file floor is
+    still caught. Using the real file length rather than the summed declared compressed
+    sizes also catches archives whose entries share (overlap) the same compressed data.
+    """
+    infos = zf.infolist()
+    if len(infos) > max_entries:
+        raise ValueError(f"Zip has too many entries ({len(infos)}; limit {max_entries})")
+
+    total = 0
+    for info in infos:
+        if _is_unsafe_name(info.filename):
+            raise ValueError(f"Unsafe path in zip archive: {info.filename}")
+        total += info.file_size
+        if total > max_bytes:
+            raise ValueError(f"Zip is too large when unpacked (limit {max_bytes // 1024**2} MiB)")
+        if info.compress_size > 0 and info.file_size > _RATIO_MIN_SIZE:
+            ratio = info.file_size / info.compress_size
+            if ratio > max_ratio:
+                raise ValueError(f"Suspicious compression ratio for {info.filename}: {ratio:.0f}")
+
+    if total > _RATIO_MIN_SIZE:
+        ratio = total / max(archive_size, 1)
+        if ratio > max_ratio:
+            raise ValueError(f"Suspicious compression ratio for the whole zip: {ratio:.0f}")
