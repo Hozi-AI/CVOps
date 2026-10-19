@@ -110,6 +110,8 @@ services:
       WORKER_TOKEN:    ${WORKER_TOKEN}
       # worker-cvat exposes GET /models on :8001 (proxied by cvat.py router).
       MODEL_DEPLOYER_URL: http://worker-cvat:8001
+      # Login mode, no default: the API refuses to start while it's empty.
+      AUTH_MODE:       ${AUTH_MODE}
       # Verifies HMAC signatures on CVAT review-completion webhooks.
       CVAT_WEBHOOK_SECRET: ${CVAT_WEBHOOK_SECRET}
     healthcheck:
@@ -228,6 +230,8 @@ services:
       # at this origin; default to the host-published :5000.
       args:
         VITE_MLFLOW_URL: ${VITE_MLFLOW_URL:-http://localhost:5000}
+        # Login mode, no default: the SPA shows an error screen while it's empty.
+        VITE_AUTH_MODE: ${AUTH_MODE}
     restart: unless-stopped
     # nginx-unprivileged listens on 8080 (UID 101, no root anywhere)
     ports: ["3000:8080"]
