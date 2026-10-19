@@ -16,10 +16,19 @@ with open(Path(__file__).parent / "schemas" / "auto_label.json") as f:
     _SCHEMA = json.load(f)
 
 
+DEFAULT_CONFIDENCE_THRESHOLD = _SCHEMA["properties"]["confidence_threshold"]["default"]
+
+
 class AutoLabelStep(Step):
     type_key = "step.auto_label"
     config_schema = _SCHEMA
     queue = "training"
+
+    def idempotency_key(self, config: dict, inputs: dict) -> str:
+        # Hash the effective threshold so an omitted value and an explicit default
+        # collide, and a changed default can't reuse outputs made with the old one.
+        threshold = float(config.get("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD))
+        return super().idempotency_key({**config, "confidence_threshold": threshold}, inputs)
 
     async def run(self, ctx: StepContext, config: dict, inputs: dict) -> dict:
         from sqlalchemy import text  # noqa: PLC0415
@@ -27,7 +36,7 @@ class AutoLabelStep(Step):
         from cvops_steps.model_runners import get_runner  # noqa: PLC0415
 
         model_version_id = config["model_version_id"]
-        threshold = float(config.get("confidence_threshold", 0.35))
+        threshold = float(config.get("confidence_threshold", DEFAULT_CONFIDENCE_THRESHOLD))
         sample_ids = [str(s) for s in inputs.get("sample_ids", [])]
 
         if not sample_ids:
@@ -121,19 +130,27 @@ class AutoLabelStep(Step):
             await ctx.session.execute(
                 text(
                     "INSERT INTO annotation_revisions "
-                    "(id, sample_id, revision_no, ontology_id, ontology_version, "
+                    "(id, project_id, sample_id, revision_no, ontology_id, ontology_version, "
                     "payload, provenance) VALUES "
-                    "(CAST(:id AS uuid), CAST(:sid AS uuid), :rev_no, "
+                    "(CAST(:id AS uuid), CAST(:pid AS uuid), CAST(:sid AS uuid), :rev_no, "
                     "CAST(:oid AS uuid), :over, CAST(:payload AS jsonb), :prov)"
                 ),
                 {
                     "id": rev_id,
+                    "pid": ctx.project_id,
                     "sid": str(sid),
                     "rev_no": rev_no,
                     "oid": ont_id,
                     "over": ont_version,
                     "payload": json.dumps(annotations),
-                    "prov": json.dumps({"source": "auto_label", "runner": runner_name}),
+                    "prov": json.dumps(
+                        {
+                            "source": "auto_label",
+                            "runner": runner_name,
+                            "model_version_id": model_version_id,
+                            "threshold": threshold,
+                        }
+                    ),
                 },
             )
             revision_ids.append(rev_id)
