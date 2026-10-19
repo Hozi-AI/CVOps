@@ -11,8 +11,8 @@ the small internal pieces for a single message/iteration:
 
   * ``ConsumerLoop._ensure_group``    — group-create idempotency (BUSYGROUP).
   * ``cvops_worker_common.runner.run_job`` — the per-message handler: it claims
-    the run (``_acquire`` = FOR UPDATE SKIP LOCKED + status='pending' guard),
-    executes the step, and finalizes the run.
+    the run (FOR UPDATE SKIP LOCKED + status='pending' guard) and hands it to
+    the engine's ``process_step``, which runs, finalises and advances it.
   * the ack-always contract           — re-implemented inline the way
     ``ConsumerLoop._consume_loop`` does it (its handler dispatch is inlined in
     the loop body and cannot be imported directly).
@@ -71,8 +71,8 @@ async def seed_parent_and_child(
     """Seed an org/project/workflow + an optional pending parent and one child.
 
     Committed (not just flushed) so the worker's own session can see the rows.
-    ``with_parent=False`` leaves ``parent_run_id`` NULL so ``run_job``'s success
-    path skips the HTTP ``_advance`` call (no network in unit tests).
+    ``with_parent=False`` leaves ``parent_run_id`` NULL, so a successful run has
+    no workflow to advance.
     """
     suffix = uuid.uuid4().hex[:8]
     org = Org(name=f"org-{suffix}")

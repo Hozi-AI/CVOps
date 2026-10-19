@@ -20,6 +20,7 @@ from cvops_api.core.registry import registry
 from cvops_api.db.models.auth import Org
 from cvops_api.db.models.projects import Project
 from cvops_api.db.models.runs import Run
+from cvops_api.engine import coordinator
 from cvops_api.engine.step import GateException, Step
 
 import cvops_worker_common.runner as runner
@@ -48,7 +49,8 @@ async def test_runner_attributes_events_to_a_valid_uuid_actor(session_factory, m
     registry.register(_EmitGateStep())
     monkeypatch.setattr(runner, "async_session_factory", session_factory)
     # The step doesn't touch storage; avoid get_storage()'s live S3 bucket check.
-    monkeypatch.setattr(runner, "get_storage", lambda: object())
+    # run_job delegates to the engine's process_step, which builds the context.
+    monkeypatch.setattr(coordinator, "get_storage", lambda: object())
     try:
         async with session_factory() as s:
             org = Org(name=f"org-{uuid.uuid4().hex[:8]}")
@@ -78,7 +80,7 @@ async def test_runner_attributes_events_to_a_valid_uuid_actor(session_factory, m
                 )
             ).scalar()
             assert actor is not None
-            assert str(actor) == runner.SYSTEM_ACTOR_ID  # a real UUID, not "service:worker"
+            assert str(actor) == str(runner.SYSTEM_ACTOR_ID)  # a real UUID, not "service:worker"
             uuid.UUID(str(actor))  # parseable
 
             status = (

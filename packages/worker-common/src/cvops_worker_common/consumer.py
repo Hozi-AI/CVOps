@@ -25,6 +25,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import select, text
 
 from cvops_api.config import settings
+from cvops_api.core.redis_client import close_redis, init_redis
 from cvops_api.db.models.runs import Run
 
 from cvops_worker_common.config import worker_settings
@@ -58,6 +59,10 @@ class ConsumerLoop:
         self.sync_handler: SyncHandler | None = sync_handler
 
     async def run_forever(self) -> None:
+        # The engine's process_step → advance_workflow enqueues the next DAG
+        # steps through cvops_api's process-global client (get_redis()), so it
+        # must be initialised here too, not just this loop's own connection.
+        await init_redis()
         redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
         try:
             await self._ensure_group(redis)
@@ -73,6 +78,7 @@ class ConsumerLoop:
                 await asyncio.gather(recovery_task, return_exceptions=True)
         finally:
             await redis.aclose()
+            await close_redis()
 
     def stop(self) -> None:
         self._stop.set()

@@ -103,7 +103,7 @@ async def test_dispatch_runs_step_and_acks(session, fake_redis, echo_step, worke
     """Seed a pending run, XADD a doorbell, drive one dispatch iteration:
     the run advances to succeeded and the message is XACK'd (empty PEL).
 
-    No parent_run_id, so the success path skips the HTTP ``_advance`` call.
+    No parent_run_id, so there is no workflow to advance.
     """
     _parent, child = await seed_parent_and_child(session, "test.echo", with_parent=False)
     loop = _make_loop()
@@ -120,7 +120,7 @@ async def test_dispatch_runs_step_and_acks(session, fake_redis, echo_step, worke
     msg_id, fields = messages[0]
     assert fields["job_id"] == str(child.id)
 
-    with patch.object(runner, "get_storage", lambda: None):
+    with patch.object(coordinator, "get_storage", lambda: None):
         await _dispatch_and_ack(loop, fake_redis, msg_id, fields)
 
     # Run advanced through the runner.
@@ -164,7 +164,7 @@ async def test_dispatch_acks_even_when_handler_raises(
 
 async def test_claim_skips_non_pending_run(session, fake_redis, echo_step, worker_db) -> None:
     """A run already in a terminal state is NOT re-processed — the
-    status='pending' guard in ``_acquire`` makes re-delivery a no-op."""
+    status='pending' claim guard in ``run_job`` makes re-delivery a no-op."""
     _parent, child = await seed_parent_and_child(
         session, "test.echo", child_status="succeeded", with_parent=False
     )
@@ -247,3 +247,33 @@ async def test_recover_orphans_ignores_other_step_types(session, fake_redis, wor
     entries = await fake_redis.xrange(loop.stream)
     job_ids = {fields["job_id"] for _id, fields in entries}
     assert str(child.id) not in job_ids
+
+
+# ── global Redis for in-process advance (#182) ────────────────────────────────
+
+
+async def test_run_forever_initialises_global_redis_for_advance(monkeypatch) -> None:
+    """process_step → advance_workflow enqueues via cvops_api's get_redis(), so
+    run_forever must initialise that client for the loop's lifetime (and close
+    it after). Without it, a training step would succeed and then crash on
+    "Redis client not initialized" instead of advancing the workflow."""
+    from cvops_api.core import redis_client
+
+    loop = _make_loop("training")
+    seen: dict[str, object] = {}
+
+    async def _noop(_redis: object) -> None:
+        return None
+
+    async def _consume(_redis: object) -> None:
+        seen["client"] = redis_client.get_redis()  # raises if not initialised
+
+    monkeypatch.setattr(loop, "_ensure_group", _noop)
+    monkeypatch.setattr(loop, "_recover_orphans", _noop)
+    monkeypatch.setattr(loop, "_consume_loop", _consume)
+
+    await loop.run_forever()
+
+    assert seen["client"] is not None
+    with pytest.raises(RuntimeError, match="not initialized"):
+        redis_client.get_redis()  # closed again on shutdown
