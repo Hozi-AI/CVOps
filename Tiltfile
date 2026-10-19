@@ -164,9 +164,36 @@ def feature_enabled(flag):
 ENABLE_CVAT = feature_enabled('cvat')
 ENABLE_TRAINING = feature_enabled('training')
 
-print('CVOps optional stacks → CVAT: %s | training+MLflow: %s' % (
+# ── Keycloak login server (#165) — no default, must be chosen ──────────────
+# Unlike the heavy stacks above, login settings are never assumed: each one
+# must be set to true/false in manifests/.env (explained in .env.example), and
+# Tilt stops here until it is. The keycloak container re-checks the same keys.
+def explicit_bool(key):
+    raw = str(os.getenv(key, env.get(key, ''))).strip().lower()
+    if raw not in ('true', 'false'):
+        fail('%s must be set to true or false in manifests/.env (see the ' % key +
+             '"Keycloak" block in .env.example). Login settings have no default.')
+    return raw == 'true'
+
+def check_keycloak_settings():
+    for key in ('KEYCLOAK_PUBLIC_URL', 'CVOPS_APP_ORIGIN'):
+        if not env.get(key):
+            fail('%s must be set in manifests/.env (see .env.example).' % key)
+    for provider in ('GOOGLE', 'GITHUB'):
+        if explicit_bool('%s_LOGIN_ENABLED' % provider):
+            for key in ('%s_CLIENT_ID' % provider, '%s_CLIENT_SECRET' % provider):
+                if not env.get(key):
+                    fail('%s_LOGIN_ENABLED=true needs %s in manifests/.env.' % (provider, key))
+
+ENABLE_KEYCLOAK = explicit_bool('CVOPS_ENABLE_KEYCLOAK')
+if ENABLE_KEYCLOAK:
+    check_keycloak_settings()
+KEYCLOAK_HOST_PORT = env.get('KEYCLOAK_HOST_PORT') or '8081'
+
+print('CVOps optional stacks → CVAT: %s | training+MLflow: %s | keycloak: %s' % (
     'on' if ENABLE_CVAT else 'off (use --cvat or CVOPS_ENABLE_CVAT=1)',
     'on' if ENABLE_TRAINING else 'off (use --training or CVOPS_ENABLE_TRAINING=1)',
+    'on' if ENABLE_KEYCLOAK else 'off (CVOPS_ENABLE_KEYCLOAK=false)',
 ))
 
 # ── Infra containers (docker compose) ───────────────────────────────────────
@@ -188,6 +215,9 @@ print('CVOps optional stacks → CVAT: %s | training+MLflow: %s' % (
 main_profiles = []
 if ENABLE_TRAINING:
     main_profiles = main_profiles + ['worker', 'mlflow']
+# Keycloak + its one-shot DB create live in the `auth` profile.
+if ENABLE_KEYCLOAK:
+    main_profiles = main_profiles + ['auth']
 
 # manifests/docker-compose.local.yml is an optional, gitignored per-machine
 # override (extra networks, labels, ...) merged on top when present.
@@ -243,6 +273,18 @@ dc_resource('redis',
     labels=['1-infra'],
     links=[link('redis://localhost:%s' % REDIS_HOST_PORT, 'redis')],
 )
+
+# Loaded only with the `auth` profile — dc_resource on an unloaded service errors.
+if ENABLE_KEYCLOAK:
+    dc_resource('keycloak-db-init',
+        labels=['1-infra'],
+        resource_deps=['postgres'],
+    )
+    dc_resource('keycloak',
+        labels=['1-infra'],
+        resource_deps=['keycloak-db-init'],
+        links=[link('http://localhost:%s/admin' % KEYCLOAK_HOST_PORT, 'keycloak admin')],
+    )
 
 # MLflow tracking server (+ one-shot DB create). Gated to the `mlflow` compose
 # profile (activated only when training is on, above), so they're loaded only
