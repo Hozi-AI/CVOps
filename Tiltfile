@@ -462,6 +462,12 @@ api_env = {
     # worker-cvat exposes GET /models on port 8001 (proxied by cvats.py router).
     # The name is historical: services/model-deployer is legacy and not run.
     'MODEL_DEPLOYER_URL': 'http://localhost:8001',
+    # Allowed base folders for server-path dataset import (docs/16-dataset-import.md).
+    # Read by the API (fast 422) and by the preprocessing worker, which inherits this
+    # dict and is the one that actually reads the folder. Empty = feature disabled;
+    # deliberately no default. Under `tilt up` both run on the host, so the paths are
+    # host paths.
+    'IMPORT_ROOTS': env.get('IMPORT_ROOTS', ''),
 }
 
 local_resource('api',
