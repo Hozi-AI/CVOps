@@ -10,8 +10,12 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
+import shutil
+import tempfile
 import uuid
 import zipfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -297,6 +301,72 @@ async def test_zip_over_entry_limit_is_rejected(session: AsyncSession) -> None:
                 config={"format": "auto", "ontology_id": ont_id},
                 inputs={"blob_hash": zip_hash},
             )
+
+    count = (
+        await session.execute(
+            text("SELECT count(*) FROM samples WHERE project_id = CAST(:p AS uuid)"),
+            {"p": proj_id},
+        )
+    ).scalar_one()
+    assert count == 0
+
+
+def _zip_with_corrupt_last_entry(n_good: int) -> bytes:
+    """A stored zip whose first ``n_good`` entries are valid and whose last fails its CRC."""
+    marker = b"GOODDATA" * 64
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for i in range(n_good):
+            zf.writestr(f"images/frame{i}.jpg", _jpg(i))
+        zf.writestr("zz_last.bin", marker)
+    data = buf.getvalue()
+    # Rewrite the last entry's stored payload; its CRC-32 no longer matches.
+    assert data.count(marker) == 1
+    return data.replace(marker, b"BADDATA!" * 64)
+
+
+async def test_failed_extraction_removes_the_temp_dir(
+    session: AsyncSession, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj_id, ont_id, _ = await _seed(session)
+    zip_data = _zip_with_corrupt_last_entry(n_good=5)
+    zip_hash = "sha256:" + hashlib.sha256(zip_data).hexdigest()
+
+    created: list[str] = []
+    files_at_cleanup: list[int] = []
+    real_mkdtemp, real_rmtree = tempfile.mkdtemp, shutil.rmtree
+
+    def _mkdtemp(*args, **kwargs) -> str:
+        path = real_mkdtemp(dir=tmp_path)
+        created.append(path)
+        return path
+
+    def _rmtree(path, *args, **kwargs) -> None:
+        files_at_cleanup.append(sum(len(files) for _, _, files in os.walk(path)))
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", _mkdtemp)
+    monkeypatch.setattr(shutil, "rmtree", _rmtree)
+
+    s1, s2, s3, s4, s5, s6 = _moto_settings()
+    with mock_aws(), s1, s2, s3, s4, s5, s6:
+        import boto3
+
+        boto3.client("s3").create_bucket(Bucket=settings.S3_BUCKET)
+        backend = S3Backend()
+        await backend.save_bytes(zip_data, "application/zip")
+        with pytest.raises(zipfile.BadZipFile, match="CRC"):
+            await ImportDatasetStep().run(
+                _ctx(session, proj_id, backend),
+                config={"format": "auto", "ontology_id": ont_id},
+                inputs={"blob_hash": zip_hash},
+            )
+
+    assert len(created) == 1
+    # Extraction really got partway (the good entries reached the disk) before failing ...
+    assert files_at_cleanup and files_at_cleanup[0] >= 5
+    # ... and the temp dir is gone anyway.
+    assert not Path(created[0]).exists()
 
     count = (
         await session.execute(

@@ -154,29 +154,31 @@ class ImportDatasetStep(Step):
         fmt: str = config.get("format", "auto")
 
         # ── 1. Resolve source directory ────────────────────────────────────
-        _tmpdir = None
-        if blob_hash:
-            zip_bytes = await ctx.storage.get_bytes(blob_hash)
-            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-                # Vet the archive's directory before anything is written to disk.
-                check_zip(
-                    zf,
-                    max_bytes=settings.IMPORT_MAX_ZIP_BYTES,
-                    max_entries=settings.IMPORT_MAX_ZIP_ENTRIES,
-                    max_ratio=settings.IMPORT_MAX_ZIP_RATIO,
-                )
-                _tmpdir = tempfile.mkdtemp()
-                root = Path(_tmpdir)
-                zf.extractall(root)
-            # If the zip contained a single top-level directory, descend into it.
-            entries = list(root.iterdir())
-            if len(entries) == 1 and entries[0].is_dir():
-                root = entries[0]
-        else:
-            # Authoritative check: only folders under IMPORT_ROOTS may be read (off when unset).
-            root = resolve_import_folder(folder_path, import_roots(settings.IMPORT_ROOTS))  # type: ignore[arg-type]
-
+        # Everything that can create the temp dir sits inside the try, so a failed
+        # extraction (bad CRC, encrypted member, disk full) never leaks what it wrote.
+        _tmpdir: str | None = None
         try:
+            if blob_hash:
+                zip_bytes = await ctx.storage.get_bytes(blob_hash)
+                with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                    # Vet the archive's directory before anything is written to disk.
+                    check_zip(
+                        zf,
+                        max_bytes=settings.IMPORT_MAX_ZIP_BYTES,
+                        max_entries=settings.IMPORT_MAX_ZIP_ENTRIES,
+                        max_ratio=settings.IMPORT_MAX_ZIP_RATIO,
+                    )
+                    _tmpdir = tempfile.mkdtemp()
+                    root = Path(_tmpdir)
+                    zf.extractall(root)
+                # If the zip contained a single top-level directory, descend into it.
+                entries = list(root.iterdir())
+                if len(entries) == 1 and entries[0].is_dir():
+                    root = entries[0]
+            else:
+                # Authoritative check: only folders under IMPORT_ROOTS may be read (off when unset).
+                root = resolve_import_folder(folder_path, import_roots(settings.IMPORT_ROOTS))  # type: ignore[arg-type]
+
             return await self._ingest(ctx, root, ontology_id, fmt, settings, StorageBackend)
         finally:
             if _tmpdir:
