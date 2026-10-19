@@ -22,4 +22,7 @@ services:
     ports: ["5173:5173"]
     volumes:
       - ../services/frontend/src:/app/src:ro
+    environment:
+      # Vite dev server reads VITE_* from its env (the build arg only reaches the build stage).
+      VITE_AUTH_MODE: ${AUTH_MODE}
     command: npm run dev -- --host 0.0.0.0

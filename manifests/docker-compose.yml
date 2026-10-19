@@ -110,6 +110,8 @@ services:
       WORKER_TOKEN:    ${WORKER_TOKEN}
       # worker-cvat exposes GET /models on :8001 (proxied by cvat.py router).
       MODEL_DEPLOYER_URL: http://worker-cvat:8001
+      # Login mode, no default: the API refuses to start while it's empty.
+      AUTH_MODE:       ${AUTH_MODE}
       # Verifies HMAC signatures on CVAT review-completion webhooks.
       CVAT_WEBHOOK_SECRET: ${CVAT_WEBHOOK_SECRET}
       # Allowed base folders for server-path import (empty = disabled).
@@ -233,6 +235,8 @@ services:
       # at this origin; default to the host-published :5000.
       args:
         VITE_MLFLOW_URL: ${VITE_MLFLOW_URL:-http://localhost:5000}
+        # Login mode, no default: the SPA shows an error screen while it's empty.
+        VITE_AUTH_MODE: ${AUTH_MODE}
     restart: unless-stopped
     # nginx-unprivileged listens on 8080 (UID 101, no root anywhere)
     ports: ["3000:8080"]
@@ -443,6 +447,90 @@ services:
     depends_on:
       - prometheus
       - loki
+
+  # ── Identity provider (--profile auth) ───────────────────────────────────
+  # Keycloak, realm `cvops` imported from keycloak/realm-cvops.json on first
+  # boot (see docs/keycloak.md). Its data lives in a dedicated `keycloak`
+  # database on the shared postgres, so users and sessions survive restarts.
+  keycloak-db-init:
+    image: postgres:16-alpine
+    profiles: ["auth", "all"]
+    user: "70:70" # the image's `postgres` user; psql needs no root
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-cvops}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+    # Idempotent: initdb scripts never run on an existing postgres volume.
+    command:
+      - sh
+      - -c
+      - >-
+        psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1
+        || psql -c "CREATE DATABASE keycloak"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0 # runs as UID 1000 (non-root)
+    profiles: ["auth", "all"]
+    restart: unless-stopped
+    ports: ["${KEYCLOAK_BIND_ADDR:-0.0.0.0}:${KEYCLOAK_HOST_PORT:-8081}:8080"]
+    # Login settings have no defaults: each value below comes from the
+    # same-named key in manifests/.env (explained in .env.example, "Keycloak"
+    # block). The entrypoint refuses to start while one is unset or still a
+    # change_me placeholder. ${...} placeholders in realm-cvops.json resolve
+    # from these names.
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-cvops}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_SEED_USER_PASSWORD: ${KEYCLOAK_SEED_USER_PASSWORD}
+      KEYCLOAK_WORKER_CLIENT_SECRET: ${KEYCLOAK_WORKER_CLIENT_SECRET}
+      CVOPS_APP_ORIGIN: ${CVOPS_APP_ORIGIN}
+      GOOGLE_LOGIN_ENABLED: ${GOOGLE_LOGIN_ENABLED}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GITHUB_LOGIN_ENABLED: ${GITHUB_LOGIN_ENABLED}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+    # Inline (not a mounted script) so Windows CRLF checkouts can't break it.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        missing=""
+        for v in KEYCLOAK_PUBLIC_URL KEYCLOAK_ADMIN_PASSWORD KEYCLOAK_SEED_USER_PASSWORD \
+                 KEYCLOAK_WORKER_CLIENT_SECRET CVOPS_APP_ORIGIN; do
+          case "$${!v}" in ""|change_me*) missing="$$missing $$v" ;; esac
+        done
+        for p in GOOGLE GITHUB; do
+          en="$${p}_LOGIN_ENABLED"
+          case "$${!en}" in
+            true)
+              for v in "$${p}_CLIENT_ID" "$${p}_CLIENT_SECRET"; do
+                [ -n "$${!v}" ] || missing="$$missing $$v"
+              done ;;
+            false) ;;
+            *) missing="$$missing $$en(true|false)" ;;
+          esac
+        done
+        if [ -n "$$missing" ]; then
+          echo "keycloak: set in manifests/.env (see .env.example):$$missing" >&2
+          exit 1
+        fi
+        export KC_HOSTNAME="$$KEYCLOAK_PUBLIC_URL"
+        export KC_BOOTSTRAP_ADMIN_PASSWORD="$$KEYCLOAK_ADMIN_PASSWORD"
+        exec /opt/keycloak/bin/kc.sh start-dev --import-realm
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro,z
+    depends_on:
+      keycloak-db-init: { condition: service_completed_successfully }
 
   # ── External tools ──────────────────────────────────────────────────────
   # The CVAT stack (server, ui, traefik:8080, db, redis, opa, workers,

@@ -189,6 +189,7 @@ function SourceCard({ ds, projectId, onDelete }: { ds: DataSource; projectId: st
           {frames > 0 ? (
             <Link
               to={`/projects/${projectId}/samples?source_id=${ds.id}`}
+              state={{ from: 'data-sources' }}
               className="text-xs font-medium text-iris-400 hover:text-iris-400"
             >
               View {frames} sample{frames === 1 ? '' : 's'} →

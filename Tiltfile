@@ -150,6 +150,24 @@ config.define_bool('heavy')
 config.define_bool('no-yolo-base')
 cfg = config.parse()
 
+# ── Login mode (no default — must be chosen) ───────────────────────────────
+# AUTH_MODE in manifests/.env (or the shell): `local` = the API's register/login
+# page, `none` = no login, every request is one dev user (local dev only). Tilt
+# stops here until it is set; the API and the frontend refuse a missing mode too.
+AUTH_MODE = str(os.getenv('AUTH_MODE', env.get('AUTH_MODE', ''))).strip()
+if AUTH_MODE not in ('local', 'none'):
+    fail('AUTH_MODE must be set to "local" (register/login page) or "none" (no login, ' +
+         'local dev only) in manifests/.env — see .env.example. It has no default.')
+# `none` lets anyone who can reach the API act as the dev user, and the API binds
+# 0.0.0.0. So it needs a second, deliberate opt-in: Tilt never sets
+# ALLOW_INSECURE_DEFAULTS itself, the dev must write it into manifests/.env.
+ALLOW_INSECURE_DEFAULTS = str(os.getenv('ALLOW_INSECURE_DEFAULTS',
+                                        env.get('ALLOW_INSECURE_DEFAULTS', ''))).strip().lower()
+if AUTH_MODE == 'none' and ALLOW_INSECURE_DEFAULTS != 'true':
+    fail('AUTH_MODE=none also needs ALLOW_INSECURE_DEFAULTS=true in manifests/.env. ' +
+         'No login means anyone who can reach this machine is the dev user; ' +
+         'use AUTH_MODE=local on any shared or networked machine.')
+
 def _truthy(v):
     return str(v).strip().lower() in ('1', 'true', 'yes', 'on')
 
@@ -164,9 +182,36 @@ def feature_enabled(flag):
 ENABLE_CVAT = feature_enabled('cvat')
 ENABLE_TRAINING = feature_enabled('training')
 
-print('CVOps optional stacks → CVAT: %s | training+MLflow: %s' % (
+# ── Keycloak login server (#165) — no default, must be chosen ──────────────
+# Unlike the heavy stacks above, login settings are never assumed: each one
+# must be set to true/false in manifests/.env (explained in .env.example), and
+# Tilt stops here until it is. The keycloak container re-checks the same keys.
+def explicit_bool(key):
+    raw = str(os.getenv(key, env.get(key, ''))).strip().lower()
+    if raw not in ('true', 'false'):
+        fail('%s must be set to true or false in manifests/.env (see the ' % key +
+             '"Keycloak" block in .env.example). Login settings have no default.')
+    return raw == 'true'
+
+def check_keycloak_settings():
+    for key in ('KEYCLOAK_PUBLIC_URL', 'CVOPS_APP_ORIGIN'):
+        if not env.get(key):
+            fail('%s must be set in manifests/.env (see .env.example).' % key)
+    for provider in ('GOOGLE', 'GITHUB'):
+        if explicit_bool('%s_LOGIN_ENABLED' % provider):
+            for key in ('%s_CLIENT_ID' % provider, '%s_CLIENT_SECRET' % provider):
+                if not env.get(key):
+                    fail('%s_LOGIN_ENABLED=true needs %s in manifests/.env.' % (provider, key))
+
+ENABLE_KEYCLOAK = explicit_bool('CVOPS_ENABLE_KEYCLOAK')
+if ENABLE_KEYCLOAK:
+    check_keycloak_settings()
+KEYCLOAK_HOST_PORT = env.get('KEYCLOAK_HOST_PORT') or '8081'
+
+print('CVOps optional stacks → CVAT: %s | training+MLflow: %s | keycloak: %s' % (
     'on' if ENABLE_CVAT else 'off (use --cvat or CVOPS_ENABLE_CVAT=1)',
     'on' if ENABLE_TRAINING else 'off (use --training or CVOPS_ENABLE_TRAINING=1)',
+    'on' if ENABLE_KEYCLOAK else 'off (CVOPS_ENABLE_KEYCLOAK=false)',
 ))
 
 # ── Infra containers (docker compose) ───────────────────────────────────────
@@ -188,6 +233,9 @@ print('CVOps optional stacks → CVAT: %s | training+MLflow: %s' % (
 main_profiles = []
 if ENABLE_TRAINING:
     main_profiles = main_profiles + ['worker', 'mlflow']
+# Keycloak + its one-shot DB create live in the `auth` profile.
+if ENABLE_KEYCLOAK:
+    main_profiles = main_profiles + ['auth']
 
 # manifests/docker-compose.local.yml is an optional, gitignored per-machine
 # override (extra networks, labels, ...) merged on top when present.
@@ -243,6 +291,18 @@ dc_resource('redis',
     labels=['1-infra'],
     links=[link('redis://localhost:%s' % REDIS_HOST_PORT, 'redis')],
 )
+
+# Loaded only with the `auth` profile — dc_resource on an unloaded service errors.
+if ENABLE_KEYCLOAK:
+    dc_resource('keycloak-db-init',
+        labels=['1-infra'],
+        resource_deps=['postgres'],
+    )
+    dc_resource('keycloak',
+        labels=['1-infra'],
+        resource_deps=['keycloak-db-init'],
+        links=[link('http://localhost:%s/admin' % KEYCLOAK_HOST_PORT, 'keycloak admin')],
+    )
 
 # MLflow tracking server (+ one-shot DB create). Gated to the `mlflow` compose
 # profile (activated only when training is on, above), so they're loaded only
@@ -468,7 +528,12 @@ api_env = {
     # deliberately no default. Under `tilt up` both run on the host, so the paths are
     # host paths.
     'IMPORT_ROOTS': env.get('IMPORT_ROOTS', ''),
+    'AUTH_MODE': AUTH_MODE,
 }
+# The API refuses AUTH_MODE=none without the explicit local-dev opt-in; pass
+# through what the dev set (checked above), never set it on their behalf.
+if AUTH_MODE == 'none':
+    api_env['ALLOW_INSECURE_DEFAULTS'] = ALLOW_INSECURE_DEFAULTS
 
 local_resource('api',
     serve_cmd='cd services/api && .venv/bin/python -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload',
@@ -496,6 +561,8 @@ local_resource('frontend',
         'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000'),
         # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge.
         'VITE_HMR_CLIENT_PORT': env.get('VITE_HMR_CLIENT_PORT', ''),
+        # Login mode baked into the SPA; it shows an error screen when unset.
+        'VITE_AUTH_MODE': AUTH_MODE,
     },
     deps=['services/frontend/src', 'services/frontend/vite.config.ts', 'services/frontend/index.html'],
     resource_deps=['api', 'frontend-install'],

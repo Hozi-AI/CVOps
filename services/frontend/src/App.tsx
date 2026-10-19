@@ -22,6 +22,7 @@ import ImportDataset from './pages/ImportDataset'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import { isAuthenticated } from './api/auth'
+import { authMode, isNoAuth } from './lib/authMode'
 
 // Code-split the workflow builder: it pulls in @xyflow/react and rjsf, which
 // would otherwise double the initial bundle for a route most sessions skip.
@@ -30,6 +31,22 @@ const WorkflowBuilder = lazy(() => import('./pages/WorkflowBuilder'))
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />
   return <>{children}</>
+}
+
+// AUTH_MODE has no default, so a build without it must not guess a login mode.
+function AuthModeMissing() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-surface-1 p-6">
+      <div className="max-w-md rounded-lg border border-border bg-surface-2 p-6 text-sm text-text-secondary">
+        <h1 className="mb-2 text-base font-semibold text-text-primary">Login mode not configured</h1>
+        <p>
+          Set <code className="text-text-primary">AUTH_MODE</code> in <code className="text-text-primary">manifests/.env</code> to{' '}
+          <code className="text-text-primary">local</code> (register/login page) or{' '}
+          <code className="text-text-primary">none</code> (no login, local dev only), then restart.
+        </p>
+      </div>
+    </div>
+  )
 }
 
 function RouteFallback() {
@@ -41,11 +58,13 @@ function RouteFallback() {
 }
 
 export default function App() {
+  if (authMode === null) return <AuthModeMissing />
   return (
     <>
     <Routes>
-      <Route path="/login"    element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      {/* No-login mode has no accounts: send stale /login links into the app. */}
+      <Route path="/login"    element={isNoAuth ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/register" element={isNoAuth ? <Navigate to="/" replace /> : <Register />} />
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/" element={<Navigate to="/projects" replace />} />
