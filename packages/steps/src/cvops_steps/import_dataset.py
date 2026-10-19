@@ -142,6 +142,7 @@ class ImportDatasetStep(Step):
         from sqlalchemy import text
 
         from cvops_api.config import settings
+        from cvops_api.core.import_safety import check_zip, import_roots, resolve_import_folder
         from cvops_api.core.storage import StorageBackend
 
         blob_hash: str | None = inputs.get("blob_hash")
@@ -156,16 +157,24 @@ class ImportDatasetStep(Step):
         _tmpdir = None
         if blob_hash:
             zip_bytes = await ctx.storage.get_bytes(blob_hash)
-            _tmpdir = tempfile.mkdtemp()
-            root = Path(_tmpdir)
             with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                # Vet the archive's directory before anything is written to disk.
+                check_zip(
+                    zf,
+                    max_bytes=settings.IMPORT_MAX_ZIP_BYTES,
+                    max_entries=settings.IMPORT_MAX_ZIP_ENTRIES,
+                    max_ratio=settings.IMPORT_MAX_ZIP_RATIO,
+                )
+                _tmpdir = tempfile.mkdtemp()
+                root = Path(_tmpdir)
                 zf.extractall(root)
             # If the zip contained a single top-level directory, descend into it.
             entries = list(root.iterdir())
             if len(entries) == 1 and entries[0].is_dir():
                 root = entries[0]
         else:
-            root = Path(folder_path)  # type: ignore[arg-type]
+            # Authoritative check: only folders under IMPORT_ROOTS may be read (off when unset).
+            root = resolve_import_folder(folder_path, import_roots(settings.IMPORT_ROOTS))  # type: ignore[arg-type]
 
         try:
             return await self._ingest(ctx, root, ontology_id, fmt, settings, StorageBackend)
@@ -275,8 +284,12 @@ class ImportDatasetStep(Step):
                 },
             )
 
+        # A symlinked image inside the folder must not lead outside it.
+        root_real = root.resolve()
         image_files = sorted(
-            p for p in root.rglob("*") if p.suffix.lower() in IMAGE_EXTS
+            p
+            for p in root.rglob("*")
+            if p.suffix.lower() in IMAGE_EXTS and p.resolve().is_relative_to(root_real)
         )
 
         sample_ids: list[str] = []

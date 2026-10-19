@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # Set to true only for local development when real secrets are not yet configured.
     ALLOW_INSECURE_DEFAULTS: bool = False
 
+    # Dataset import (docs/16-dataset-import.md). Server-path import reads a folder on
+    # the worker's own disk, so it stays disabled unless IMPORT_ROOTS lists the allowed
+    # base directories (comma-separated, absolute). The ZIP limits bound what an
+    # uploaded zip may unpack to (zip-bomb protection).
+    IMPORT_ROOTS: str = ""
+    IMPORT_MAX_ZIP_BYTES: int = 4 * 1024**3  # total uncompressed size
+    IMPORT_MAX_ZIP_ENTRIES: int = 100_000
+    IMPORT_MAX_ZIP_RATIO: int = 100  # uncompressed/compressed, judged for files over 1 MiB
+
 
 def validate_secrets(s: Settings) -> None:
     """Raise at server startup if critical secrets are still set to known placeholders.
