@@ -112,6 +112,8 @@ services:
       MODEL_DEPLOYER_URL: http://worker-cvat:8001
       # Verifies HMAC signatures on CVAT review-completion webhooks.
       CVAT_WEBHOOK_SECRET: ${CVAT_WEBHOOK_SECRET}
+      # Allowed base folders for server-path import (empty = disabled).
+      IMPORT_ROOTS:    ${IMPORT_ROOTS:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
       interval: 10s
@@ -144,6 +146,9 @@ services:
       S3_BUCKET:       ${GARAGE_DEFAULT_BUCKET:-cvops-blobs}
       S3_REGION:       garage
       WORKER_TOKEN:    ${WORKER_TOKEN}
+      # Allowed base folders for server-path import (empty = disabled); the worker
+      # is the one that reads the folder, so it enforces this.
+      IMPORT_ROOTS:    ${IMPORT_ROOTS:-}
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1 || exit 1"]
       interval: 30s
