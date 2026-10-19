@@ -21,6 +21,12 @@ def _zip(members: dict[str, bytes], compression: int = zipfile.ZIP_STORED) -> zi
     return zipfile.ZipFile(io.BytesIO(buf.getvalue()))
 
 
+def _size(zf: zipfile.ZipFile) -> int:
+    """Length of the archive bytes behind a ``_zip`` result (what the step passes in)."""
+    assert isinstance(zf.fp, io.BytesIO)
+    return zf.fp.getbuffer().nbytes
+
+
 # ── server folder paths ────────────────────────────────────────────────────
 
 
@@ -115,32 +121,58 @@ def test_existence_of_paths_outside_roots_is_not_revealed(tmp_path: Path) -> Non
 
 def test_normal_zip_is_accepted() -> None:
     zf = _zip({"images/a.jpg": b"x" * 1000, "labels/a.txt": b"0 0.5 0.5 0.1 0.1"})
-    check_zip(zf, **LIMITS)
+    check_zip(zf, archive_size=_size(zf), **LIMITS)
 
 
 def test_too_many_entries_is_rejected() -> None:
     zf = _zip({f"f{i}.txt": b"x" for i in range(5)})
     with pytest.raises(ValueError, match="too many entries"):
-        check_zip(zf, **{**LIMITS, "max_entries": 4})
+        check_zip(zf, archive_size=_size(zf), **{**LIMITS, "max_entries": 4})
 
 
 def test_oversized_zip_is_rejected() -> None:
     zf = _zip({"a.bin": b"\0" * 3000, "b.bin": b"\0" * 3000})
     with pytest.raises(ValueError, match="too large"):
-        check_zip(zf, **{**LIMITS, "max_bytes": 5000})
+        check_zip(zf, archive_size=_size(zf), **{**LIMITS, "max_bytes": 5000})
 
 
 def test_zip_bomb_ratio_is_rejected() -> None:
     # 5 MiB of zeros deflates to a few KiB: far over a 100x ratio.
     zf = _zip({"bomb.bin": b"\0" * (5 * 1024 * 1024)}, zipfile.ZIP_DEFLATED)
     with pytest.raises(ValueError, match="compression ratio"):
-        check_zip(zf, **LIMITS)
+        check_zip(zf, archive_size=_size(zf), **LIMITS)
+
+
+def test_bomb_split_into_many_small_files_is_rejected() -> None:
+    # 20 files of exactly 1 MiB each: none is over the per-file floor, so only the
+    # archive-wide ratio (20 MiB unpacked from a few tens of KiB) can catch it.
+    members = {f"part{i}.bin": b"\0" * (1024 * 1024) for i in range(20)}
+    zf = _zip(members, zipfile.ZIP_DEFLATED)
+    with pytest.raises(ValueError, match="whole zip"):
+        check_zip(zf, archive_size=_size(zf), **{**LIMITS, "max_bytes": 100 * 1024 * 1024})
+
+
+def test_overall_ratio_uses_the_real_archive_size() -> None:
+    # Declared sizes alone look fine (stored, ratio 1), but if the archive on disk is far
+    # smaller than what it unpacks to (e.g. overlapping entries), the whole-zip check fires.
+    zf = _zip({"a.bin": b"x" * (2 * 1024 * 1024)})
+    check_zip(zf, archive_size=_size(zf), **LIMITS)
+    with pytest.raises(ValueError, match="whole zip"):
+        check_zip(zf, archive_size=10_000, **LIMITS)
+
+
+def test_small_zip_is_not_judged_on_overall_ratio() -> None:
+    # Many tiny, very compressible text files: high overall ratio, but under the floor.
+    zf = _zip(
+        {f"labels/{i}.txt": b"0 0.5 0.5 0.1 0.1\n" * 50 for i in range(80)}, zipfile.ZIP_DEFLATED
+    )
+    check_zip(zf, archive_size=_size(zf), **{**LIMITS, "max_ratio": 2})
 
 
 def test_small_highly_compressible_file_is_not_flagged() -> None:
     # Under 1 MiB the ratio is not judged (tiny text files compress extremely well).
     zf = _zip({"a.txt": b"a" * 100_000}, zipfile.ZIP_DEFLATED)
-    check_zip(zf, **LIMITS)
+    check_zip(zf, archive_size=_size(zf), **LIMITS)
 
 
 @pytest.mark.parametrize(
@@ -157,10 +189,10 @@ def test_small_highly_compressible_file_is_not_flagged() -> None:
 def test_unsafe_member_names_are_rejected(name: str) -> None:
     zf = _zip({name: b"x"})
     with pytest.raises(ValueError, match="Unsafe path"):
-        check_zip(zf, **LIMITS)
+        check_zip(zf, archive_size=_size(zf), **LIMITS)
 
 
 def test_dots_inside_a_name_are_not_unsafe() -> None:
     # The naive `".." in name` test would wrongly reject these legitimate names.
     zf = _zip({"images/photo..final.jpg": b"x", "labels/a..b.txt": b"x"})
-    check_zip(zf, **LIMITS)
+    check_zip(zf, archive_size=_size(zf), **LIMITS)

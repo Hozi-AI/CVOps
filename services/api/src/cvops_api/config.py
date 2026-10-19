@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     IMPORT_ROOTS: str = ""
     IMPORT_MAX_ZIP_BYTES: int = 4 * 1024**3  # total uncompressed size
     IMPORT_MAX_ZIP_ENTRIES: int = 100_000
-    IMPORT_MAX_ZIP_RATIO: int = 100  # uncompressed/compressed, judged for files over 1 MiB
+    IMPORT_MAX_ZIP_RATIO: int = 100  # uncompressed/compressed, per file over 1 MiB and archive-wide
 
 
 def validate_secrets(s: Settings) -> None:

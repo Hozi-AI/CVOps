@@ -164,6 +164,7 @@ class ImportDatasetStep(Step):
                     # Vet the archive's directory before anything is written to disk.
                     check_zip(
                         zf,
+                        archive_size=len(zip_bytes),
                         max_bytes=settings.IMPORT_MAX_ZIP_BYTES,
                         max_entries=settings.IMPORT_MAX_ZIP_ENTRIES,
                         max_ratio=settings.IMPORT_MAX_ZIP_RATIO,

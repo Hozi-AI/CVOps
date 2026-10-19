@@ -49,11 +49,24 @@ def _is_unsafe_name(name: str) -> bool:
     )
 
 
-def check_zip(zf: zipfile.ZipFile, *, max_bytes: int, max_entries: int, max_ratio: int) -> None:
+def check_zip(
+    zf: zipfile.ZipFile,
+    *,
+    archive_size: int,
+    max_bytes: int,
+    max_entries: int,
+    max_ratio: int,
+) -> None:
     """Raise ``ValueError`` if the archive is too big, too crowded, or has unsafe member names.
 
     Reads only the archive's directory, so nothing is unpacked yet. The sizes are the ones
     the archive declares; ``zipfile`` stops reading a member at its declared size.
+
+    ``archive_size`` is the length of the zip file itself. The compression ratio is judged
+    both per large file and for the archive as a whole (total unpacked size over
+    ``archive_size``), so a bomb split into many files just under the per-file floor is
+    still caught. Using the real file length rather than the summed declared compressed
+    sizes also catches archives whose entries share (overlap) the same compressed data.
     """
     infos = zf.infolist()
     if len(infos) > max_entries:
@@ -70,3 +83,8 @@ def check_zip(zf: zipfile.ZipFile, *, max_bytes: int, max_entries: int, max_rati
             ratio = info.file_size / info.compress_size
             if ratio > max_ratio:
                 raise ValueError(f"Suspicious compression ratio for {info.filename}: {ratio:.0f}")
+
+    if total > _RATIO_MIN_SIZE:
+        ratio = total / max(archive_size, 1)
+        if ratio > max_ratio:
+            raise ValueError(f"Suspicious compression ratio for the whole zip: {ratio:.0f}")
