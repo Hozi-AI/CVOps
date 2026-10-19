@@ -158,6 +158,15 @@ AUTH_MODE = str(os.getenv('AUTH_MODE', env.get('AUTH_MODE', ''))).strip()
 if AUTH_MODE not in ('local', 'none'):
     fail('AUTH_MODE must be set to "local" (register/login page) or "none" (no login, ' +
          'local dev only) in manifests/.env — see .env.example. It has no default.')
+# `none` lets anyone who can reach the API act as the dev user, and the API binds
+# 0.0.0.0. So it needs a second, deliberate opt-in: Tilt never sets
+# ALLOW_INSECURE_DEFAULTS itself, the dev must write it into manifests/.env.
+ALLOW_INSECURE_DEFAULTS = str(os.getenv('ALLOW_INSECURE_DEFAULTS',
+                                        env.get('ALLOW_INSECURE_DEFAULTS', ''))).strip().lower()
+if AUTH_MODE == 'none' and ALLOW_INSECURE_DEFAULTS != 'true':
+    fail('AUTH_MODE=none also needs ALLOW_INSECURE_DEFAULTS=true in manifests/.env. ' +
+         'No login means anyone who can reach this machine is the dev user; ' +
+         'use AUTH_MODE=local on any shared or networked machine.')
 
 def _truthy(v):
     return str(v).strip().lower() in ('1', 'true', 'yes', 'on')
@@ -473,9 +482,10 @@ api_env = {
     'MODEL_DEPLOYER_URL': 'http://localhost:8001',
     'AUTH_MODE': AUTH_MODE,
 }
-# The API refuses AUTH_MODE=none without the explicit local-dev opt-in.
+# The API refuses AUTH_MODE=none without the explicit local-dev opt-in; pass
+# through what the dev set (checked above), never set it on their behalf.
 if AUTH_MODE == 'none':
-    api_env['ALLOW_INSECURE_DEFAULTS'] = 'true'
+    api_env['ALLOW_INSECURE_DEFAULTS'] = ALLOW_INSECURE_DEFAULTS
 
 local_resource('api',
     serve_cmd='cd services/api && .venv/bin/python -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload',
