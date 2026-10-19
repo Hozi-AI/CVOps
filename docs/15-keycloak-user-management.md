@@ -84,6 +84,7 @@ the only change is *where org_id comes from*.
 - **docker-compose** (`manifests/docker-compose.yml`): add `keycloak` service behind a new profile (`auth`, on by default once stable; gate like CVAT/training while iterating). Use a non-root Keycloak image (per the non-root-containers rule — verify before choosing the tag). Back it with its own Postgres database/schema (separate DB on the existing postgres, or a dedicated `keycloak` db). Mount the realm import.
 - **Tilt** (`Tiltfile`): bring Keycloak up as infra (container) for `tilt up`, with realm import on first boot; expose on a stable local port; API/worker get `KEYCLOAK_URL` env.
 - **nginx** edge: no change needed if KC is reached directly; optionally proxy `/auth/` → Keycloak for same-origin.
+- **Implemented in #165** — see [`keycloak.md`](keycloak.md) for running it, the realm, Google/GitHub login and reset.
 
 ## Config (`services/api/src/cvops_api/config.py`)
 

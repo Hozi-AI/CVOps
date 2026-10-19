@@ -27,6 +27,8 @@ Two distinct entry points — keep them straight:
 
 **Optional heavy stacks (OFF by default).** The CVAT labelling stack (~10 containers + submodule checkout + nuctl + `worker-cvat`) and the training stack (`worker-training`'s multi-GB torch/ultralytics image + MLflow) are the expensive parts, so a plain `tilt up` skips both and brings up only the core (postgres, redis, garage, api, frontend, `worker-preprocessing`, nginx, migrations). Opt in per-run with Tilt args — `tilt up -- --cvat`, `tilt up -- --training`, `tilt up -- --heavy` (both) — or persistently with env vars `CVOPS_ENABLE_CVAT=1` / `CVOPS_ENABLE_TRAINING=1` (shell env or `manifests/.env`). The toggles drive both the host resources and the compose profiles (`worker` + `mlflow`); MLflow is now profile-gated in `docker-compose.yml`, so it comes up only with training (Tilt) or `--profile app/all` (compose).
 
+**Keycloak login server (no default — must be chosen).** `CVOPS_ENABLE_KEYCLOAK` in `manifests/.env` must be `true` or `false`; Tilt fails until it is set. When `true`, the `auth` compose profile brings up `keycloak-db-init` + `keycloak` (non-root, own `keycloak` database on the shared postgres, realm imported once from `manifests/keycloak/realm-cvops.json`: clients `cvops-frontend` / `cvops-api` / `cvops-worker`, roles `owner`/`editor`/`viewer`, org groups with an `org_id` claim, optional Google/GitHub login). Its login settings (`KEYCLOAK_PUBLIC_URL`, `CVOPS_APP_ORIGIN`, `GOOGLE_/GITHUB_LOGIN_ENABLED`, …) also have no defaults — Tilt and the container both refuse to start without them. Redirect URIs are exact, never wildcards. See `docs/keycloak.md`.
+
 **Pre-prod / integration → `docker compose` with profiles** (from `manifests/`). Everything containerised.
 
 ```bash
