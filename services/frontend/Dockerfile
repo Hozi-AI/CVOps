@@ -8,6 +8,9 @@ COPY . .
 # browser at this MLflow origin; passed as a build arg from docker-compose.
 ARG VITE_MLFLOW_URL
 ENV VITE_MLFLOW_URL=${VITE_MLFLOW_URL}
+# Login mode (local | none) from AUTH_MODE in manifests/.env; no default.
+ARG VITE_AUTH_MODE
+ENV VITE_AUTH_MODE=${VITE_AUTH_MODE}
 RUN npm run build
 
 # ── development target ───────────────────────────────────────────────────

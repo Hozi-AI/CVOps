@@ -5,6 +5,7 @@ import { useProjects } from '../api/projects'
 import { useUIStore } from '../store/ui'
 import { useTheme } from '../lib/theme'
 import { logout } from '../api/auth'
+import { isNoAuth } from '../lib/authMode'
 import { queryClient } from '../lib/queryClient'
 import { cn } from '../lib/cn'
 
@@ -91,9 +92,10 @@ export function CommandPalette() {
       })
     }
 
-    cmds.push(
-      { id: 'action-theme', label: 'Toggle theme', group: 'Actions', run: () => toggle() },
-      {
+    cmds.push({ id: 'action-theme', label: 'Toggle theme', group: 'Actions', run: () => toggle() })
+    // No-login mode has no session to sign out of.
+    if (!isNoAuth) {
+      cmds.push({
         id: 'action-logout',
         label: 'Sign out',
         group: 'Actions',
@@ -102,8 +104,8 @@ export function CommandPalette() {
           queryClient.clear()
           navigate('/login', { replace: true })
         },
-      },
-    )
+      })
+    }
     return cmds
   }, [projects, projectId, navigate, toggle])
 

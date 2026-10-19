@@ -150,6 +150,24 @@ config.define_bool('heavy')
 config.define_bool('no-yolo-base')
 cfg = config.parse()
 
+# ── Login mode (no default — must be chosen) ───────────────────────────────
+# AUTH_MODE in manifests/.env (or the shell): `local` = the API's register/login
+# page, `none` = no login, every request is one dev user (local dev only). Tilt
+# stops here until it is set; the API and the frontend refuse a missing mode too.
+AUTH_MODE = str(os.getenv('AUTH_MODE', env.get('AUTH_MODE', ''))).strip()
+if AUTH_MODE not in ('local', 'none'):
+    fail('AUTH_MODE must be set to "local" (register/login page) or "none" (no login, ' +
+         'local dev only) in manifests/.env — see .env.example. It has no default.')
+# `none` lets anyone who can reach the API act as the dev user, and the API binds
+# 0.0.0.0. So it needs a second, deliberate opt-in: Tilt never sets
+# ALLOW_INSECURE_DEFAULTS itself, the dev must write it into manifests/.env.
+ALLOW_INSECURE_DEFAULTS = str(os.getenv('ALLOW_INSECURE_DEFAULTS',
+                                        env.get('ALLOW_INSECURE_DEFAULTS', ''))).strip().lower()
+if AUTH_MODE == 'none' and ALLOW_INSECURE_DEFAULTS != 'true':
+    fail('AUTH_MODE=none also needs ALLOW_INSECURE_DEFAULTS=true in manifests/.env. ' +
+         'No login means anyone who can reach this machine is the dev user; ' +
+         'use AUTH_MODE=local on any shared or networked machine.')
+
 def _truthy(v):
     return str(v).strip().lower() in ('1', 'true', 'yes', 'on')
 
@@ -504,7 +522,12 @@ api_env = {
     # worker-cvat exposes GET /models on port 8001 (proxied by cvats.py router).
     # The name is historical: services/model-deployer is legacy and not run.
     'MODEL_DEPLOYER_URL': 'http://localhost:8001',
+    'AUTH_MODE': AUTH_MODE,
 }
+# The API refuses AUTH_MODE=none without the explicit local-dev opt-in; pass
+# through what the dev set (checked above), never set it on their behalf.
+if AUTH_MODE == 'none':
+    api_env['ALLOW_INSECURE_DEFAULTS'] = ALLOW_INSECURE_DEFAULTS
 
 local_resource('api',
     serve_cmd='cd services/api && .venv/bin/python -m uvicorn cvops_api.main:app --host 0.0.0.0 --port 8000 --reload',
@@ -532,6 +555,8 @@ local_resource('frontend',
         'VITE_MLFLOW_URL': env.get('VITE_MLFLOW_URL', 'http://localhost:5000'),
         # HMR websocket port the browser dials (vite.config.ts). Empty → :80 edge.
         'VITE_HMR_CLIENT_PORT': env.get('VITE_HMR_CLIENT_PORT', ''),
+        # Login mode baked into the SPA; it shows an error screen when unset.
+        'VITE_AUTH_MODE': AUTH_MODE,
     },
     deps=['services/frontend/src', 'services/frontend/vite.config.ts', 'services/frontend/index.html'],
     resource_deps=['api', 'frontend-install'],

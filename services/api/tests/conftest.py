@@ -89,3 +89,13 @@ async def session(postgres_url: str) -> AsyncSession:  # type: ignore[return]
     async with factory() as sess:
         yield sess
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _auth_mode_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AUTH_MODE has no default (startup refuses to run without it); the suite
+    exercises the JWT login, so every test runs with AUTH_MODE=local unless it
+    overrides it."""
+    from cvops_api.config import settings
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
