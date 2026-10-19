@@ -106,11 +106,13 @@ class CvatDeployment(Base, EntityBase):
     Records which org owns a model deployed to CVAT as a Nuclio function.
 
     Nuclio functions live in one namespace shared by every tenant, so the
-    function itself carries no owner. One row per (org, function) is what lets
-    list/delete/annotate be scoped to the caller's org. The same function may
-    have rows for several orgs (a shared model); it is only removed from CVAT
-    once the last org releases it. ``model_version_id`` is null for functions
-    deployed from a raw .pt upload.
+    function itself carries no owner. This row is what lets list/delete/annotate
+    be scoped to the caller's org. Ownership is exclusive: at most one live row
+    per function, enforced by a partial unique index, so two orgs can never both
+    hold (and overwrite) the same function. The row is reserved before the
+    deployer runs and soft-deleted if that deploy fails. Sharing a model across
+    orgs needs an explicit flow of its own. ``model_version_id`` is null for
+    functions deployed from a raw .pt upload.
     """
 
     __tablename__ = "cvat_deployments"
@@ -123,10 +125,10 @@ class CvatDeployment(Base, EntityBase):
     )
 
     __table_args__ = (
-        # Partial so a released deployment doesn't block the org re-deploying it.
+        # One live owner per function. Partial so a released deployment frees
+        # the name for any org to deploy again.
         Index(
-            "uq_cvat_deployments_org_function",
-            "org_id",
+            "uq_cvat_deployments_function_name",
             "function_name",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),

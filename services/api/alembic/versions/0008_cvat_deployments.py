@@ -1,7 +1,8 @@
 """add cvat_deployments table
 
 Records which org owns each Nuclio function deployed to CVAT, so the CVAT
-router can scope list/delete/annotate per tenant.
+router can scope list/delete/annotate per tenant. Ownership is exclusive: the
+partial unique index allows one live row per function_name.
 
 Revision ID: 0008
 Revises: cfb17149867a
@@ -54,9 +55,9 @@ def upgrade() -> None:
         "ix_cvat_deployments_model_version_id", "cvat_deployments", ["model_version_id"]
     )
     op.create_index(
-        "uq_cvat_deployments_org_function",
+        "uq_cvat_deployments_function_name",
         "cvat_deployments",
-        ["org_id", "function_name"],
+        ["function_name"],
         unique=True,
         postgresql_where=sa.text("deleted_at IS NULL"),
     )
