@@ -136,12 +136,29 @@ segment, those folder splits are used as-is. Otherwise (none, or a mix) the
 Auto-creating missing classes on import is tracked in
 [#138](https://github.com/Hozi-AI/CVOps/issues/138).
 
-### Server-path caveat
+### Server-path import is allow-listed
 
-`folder_path` is opened by the worker process with **no allow-list or sandbox** —
-any path readable by the worker can be imported by any project member. Treat it as a
-trusted-operator feature on dev boxes. Tracked in
-[#185](https://github.com/Hozi-AI/CVOps/issues/#185).
+`folder_path` is read by the **worker** on its own disk, so it is **off by default**.
+An operator enables it by setting `IMPORT_ROOTS` to a comma-separated list of absolute
+base folders (e.g. `IMPORT_ROOTS=/data/imports`); the folder must also be present inside
+the worker (mount it). A path is resolved first (symlinks and `..` followed), then
+refused unless it lies inside one of the roots. The API checks this up front (a `422`
+with the reason) and the worker checks it again before reading. Images inside the folder
+that are symlinks pointing outside it are skipped. With `IMPORT_ROOTS` empty the
+**Server folder path** tab still shows, but every request returns `422`.
+
+### Zip limits
+
+An uploaded zip is vetted before anything is extracted. It is refused if it has more than
+`IMPORT_MAX_ZIP_ENTRIES` entries (default 100 000), unpacks to more than
+`IMPORT_MAX_ZIP_BYTES` in total (default 4 GiB), contains a file over 1 MiB compressed at
+more than `IMPORT_MAX_ZIP_RATIO`× (default 100), or has a member with an absolute path,
+a drive letter, or a `..` path component.
+
+These limits only bound what a zip may unpack to. The worker still downloads the whole
+zip into **memory** before opening it (`StorageBackend.get_bytes`), so a very large import
+also needs a worker with enough RAM. Streaming the download to a temporary file instead is
+a possible follow-up.
 
 ---
 
