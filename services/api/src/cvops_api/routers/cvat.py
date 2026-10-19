@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import UTC, datetime
@@ -7,7 +8,8 @@ from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import func, select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cvops_api.config import settings
@@ -17,6 +19,8 @@ from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
 from cvops_api.db.models.models import CvatDeployment, ModelVersion
 from cvops_api.db.models.projects import Project
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -29,8 +33,8 @@ def _function_name(model_name: str) -> str:
 
     Mirrors ``slugify`` in services/worker-cvat/src/worker_cvat/deployer.py (the
     live deployer; the legacy model-deployer uses the same rule). Needed up front
-    so a name already owned by another org is refused *before* the deployer
-    overwrites that org's function.
+    so the name can be reserved for the caller's org *before* the deployer runs,
+    and a name another org owns is refused instead of overwriting its function.
     """
     slug = re.sub(r"[^a-z0-9-]", "-", model_name.lower())
     slug = re.sub(r"-+", "-", slug).strip("-")
@@ -91,51 +95,87 @@ async def _get_deployment(function_id: str, user: User, session: AsyncSession) -
     return dep
 
 
-async def _check_name_available(function_name: str, user: User, session: AsyncSession) -> None:
-    """Refuse a deploy that would overwrite a function another org owns."""
-    r = await session.execute(
-        select(CvatDeployment.id)
-        .where(
-            CvatDeployment.function_name == function_name,
-            CvatDeployment.org_id != user.org_id,
-            CvatDeployment.deleted_at.is_(None),
-        )
-        .limit(1)
-    )
-    if r.first() is not None:
-        raise HTTPException(409, "A deployed model with this name already exists")
+async def _reserve_function(
+    function_name: str, model_name: str, user: User, session: AsyncSession
+) -> tuple[CvatDeployment, bool]:
+    """Claim exclusive ownership of ``function_name`` for the caller's org.
 
-
-async def _claim_deployment(
-    function_name: str,
-    model_name: str,
-    model_version_id: uuid.UUID | None,
-    user: User,
-    session: AsyncSession,
-) -> None:
-    """Record the caller's org as an owner of the function (idempotent)."""
+    Runs *before* the deployer is called, so two orgs can never both deploy the
+    same Nuclio function. Returns ``(row, created)``: an org that already owns
+    the live row reuses it (a same-org redeploy/update, ``created=False``);
+    otherwise a new row is inserted and committed. The partial unique index on
+    ``function_name`` (``deleted_at IS NULL``) makes the claim atomic, so a
+    racing insert by another org fails here and becomes a 409.
+    """
     r = await session.execute(
         select(CvatDeployment).where(
-            CvatDeployment.org_id == user.org_id,
             CvatDeployment.function_name == function_name,
             CvatDeployment.deleted_at.is_(None),
         )
     )
     dep = r.scalar_one_or_none()
-    if dep is None:
-        session.add(
-            CvatDeployment(
-                org_id=user.org_id,
-                function_name=function_name,
-                model_name=model_name,
-                model_version_id=model_version_id,
-                created_by=user.id,
-            )
-        )
-    else:
-        dep.model_name = model_name
-        dep.model_version_id = model_version_id
+    if dep is not None:
+        if dep.org_id != user.org_id:
+            raise HTTPException(409, "A deployed model with this name already exists")
+        return dep, False
+
+    dep = CvatDeployment(
+        org_id=user.org_id,
+        function_name=function_name,
+        model_name=model_name,
+        created_by=user.id,
+    )
+    session.add(dep)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(409, "A deployed model with this name already exists")
+    return dep, True
+
+
+async def _release_reservation(dep_id: uuid.UUID, session: AsyncSession) -> None:
+    """Soft-delete a reservation whose deploy failed, freeing the name again.
+
+    Runs on a fresh transaction: whatever the failed request left in the
+    session is rolled back first. Soft-delete (not a hard delete) follows the
+    codebase convention; the unique index is partial, so it frees the name.
+    """
+    await session.rollback()
+    await session.execute(
+        update(CvatDeployment)
+        .where(CvatDeployment.id == dep_id)
+        .values(deleted_at=datetime.now(UTC))
+    )
     await session.commit()
+
+
+async def _finish_deployment(
+    dep: CvatDeployment,
+    model_name: str,
+    model_version_id: uuid.UUID | None,
+    session: AsyncSession,
+) -> None:
+    """Record what is now deployed under the caller's reserved function."""
+    dep.model_name = model_name
+    dep.model_version_id = model_version_id
+    await session.commit()
+
+
+def _warn_on_name_mismatch(reserved: str, result: dict[str, Any]) -> None:
+    """Log if the deployer named the function differently from the reservation.
+
+    Ownership is reserved on ``_function_name(model_name)`` before the deployer
+    runs; if worker-cvat's slug rule ever drifts from it, the row would point at
+    the wrong function. Surface that loudly rather than silently re-keying.
+    """
+    actual = result.get("function_name")
+    if actual and actual != reserved:
+        logger.error(
+            "CVAT deployer returned function %r but ownership was reserved for %r",
+            actual,
+            reserved,
+        )
 
 
 # ── Deploy a stored model to CVAT ────────────────────────────────────────────
@@ -150,39 +190,43 @@ async def cvat_deploy_model(
 ) -> dict[str, Any]:
     """Download model weights from MinIO and deploy to CVAT via Nuclio."""
     mv = await _get_model_version(id, current_user, session)
-    await _check_name_available(_function_name(model_name), current_user, session)
-
-    presigned_url = await get_storage().get_presigned_get(mv.blob_hash)
+    function_name = _function_name(model_name)
+    dep, created = await _reserve_function(function_name, model_name, current_user, session)
 
     try:
-        async with httpx.AsyncClient(timeout=30) as http:
-            weights_resp = await http.get(presigned_url)
-            if weights_resp.status_code != 200:
-                raise HTTPException(502, "Could not fetch model weights from storage")
+        presigned_url = await get_storage().get_presigned_get(mv.blob_hash)
+        try:
+            async with httpx.AsyncClient(timeout=30) as http:
+                weights_resp = await http.get(presigned_url)
+                if weights_resp.status_code != 200:
+                    raise HTTPException(502, "Could not fetch model weights from storage")
 
-            deploy_resp = await http.post(
-                f"{DEPLOYER_URL}/deploy",
-                headers=_DEPLOYER_HEADERS,
-                data={"model_name": model_name},
-                files={
-                    "file": (f"{model_name}.pt", weights_resp.content, "application/octet-stream")
-                },
-                timeout=300,
-            )
-    except httpx.ConnectError:
-        raise HTTPException(503, "CVAT deployer is not available")
+                deploy_resp = await http.post(
+                    f"{DEPLOYER_URL}/deploy",
+                    headers=_DEPLOYER_HEADERS,
+                    data={"model_name": model_name},
+                    files={
+                        "file": (
+                            f"{model_name}.pt",
+                            weights_resp.content,
+                            "application/octet-stream",
+                        )
+                    },
+                    timeout=300,
+                )
+        except httpx.ConnectError:
+            raise HTTPException(503, "CVAT deployer is not available")
 
-    if deploy_resp.status_code != 200:
-        raise HTTPException(502, f"Deployer error: {deploy_resp.text}")
+        if deploy_resp.status_code != 200:
+            raise HTTPException(502, f"Deployer error: {deploy_resp.text}")
+        result = cast(dict[str, Any], deploy_resp.json())
+    except Exception:
+        if created:
+            await _release_reservation(dep.id, session)
+        raise
 
-    result = cast(dict[str, Any], deploy_resp.json())
-    await _claim_deployment(
-        result.get("function_name") or _function_name(model_name),
-        model_name,
-        mv.id,
-        current_user,
-        session,
-    )
+    _warn_on_name_mismatch(function_name, result)
+    await _finish_deployment(dep, model_name, mv.id, session)
     return result
 
 
@@ -217,28 +261,33 @@ async def cvat_deploy_file(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Accept a .pt upload and forward it to the CVAT worker for deployment."""
-    await _check_name_available(_function_name(model_name), current_user, session)
-    contents = await file.read()
+    function_name = _function_name(model_name)
+    dep, created = await _reserve_function(function_name, model_name, current_user, session)
+
     try:
-        async with httpx.AsyncClient(timeout=300) as http:
-            resp = await http.post(
-                f"{DEPLOYER_URL}/deploy",
-                headers=_DEPLOYER_HEADERS,
-                data={"model_name": model_name},
-                files={"file": (file.filename or "model.pt", contents, "application/octet-stream")},
-            )
-    except httpx.ConnectError:
-        raise HTTPException(503, "CVAT deployer is not available")
-    if resp.status_code != 200:
-        raise HTTPException(502, f"Deploy error: {resp.text}")
-    result = cast(dict[str, Any], resp.json())
-    await _claim_deployment(
-        result.get("function_name") or _function_name(model_name),
-        model_name,
-        None,
-        current_user,
-        session,
-    )
+        contents = await file.read()
+        try:
+            async with httpx.AsyncClient(timeout=300) as http:
+                resp = await http.post(
+                    f"{DEPLOYER_URL}/deploy",
+                    headers=_DEPLOYER_HEADERS,
+                    data={"model_name": model_name},
+                    files={
+                        "file": (file.filename or "model.pt", contents, "application/octet-stream")
+                    },
+                )
+        except httpx.ConnectError:
+            raise HTTPException(503, "CVAT deployer is not available")
+        if resp.status_code != 200:
+            raise HTTPException(502, f"Deploy error: {resp.text}")
+        result = cast(dict[str, Any], resp.json())
+    except Exception:
+        if created:
+            await _release_reservation(dep.id, session)
+        raise
+
+    _warn_on_name_mismatch(function_name, result)
+    await _finish_deployment(dep, model_name, None, session)
     return result
 
 
@@ -251,38 +300,26 @@ async def cvat_delete_model(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Release the caller's org's claim on a deployed model.
+    """Remove a deployed model the caller's org owns from CVAT.
 
-    The Nuclio function itself is only removed from CVAT once no other org
-    still owns it.
+    The org's ownership row is released only after the deployer confirms the
+    delete, so a failed delete keeps the claim and can be retried.
     """
     dep = await _get_deployment(function_id, current_user, session)
 
-    r = await session.execute(
-        select(func.count())
-        .select_from(CvatDeployment)
-        .where(
-            CvatDeployment.function_name == function_id,
-            CvatDeployment.org_id != current_user.org_id,
-            CvatDeployment.deleted_at.is_(None),
-        )
-    )
-    result: dict[str, Any] = {"deleted": function_id}
-    if r.scalar_one() == 0:
-        try:
-            async with httpx.AsyncClient(timeout=30) as http:
-                resp = await http.delete(
-                    f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS
-                )
-        except httpx.ConnectError:
-            raise HTTPException(503, "CVAT deployer is not available")
-        if resp.status_code != 200:
-            raise HTTPException(502, f"Delete error: {resp.text}")
-        result = cast(dict[str, Any], resp.json())
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.delete(
+                f"{DEPLOYER_URL}/models/{function_id}", headers=_DEPLOYER_HEADERS
+            )
+    except httpx.ConnectError:
+        raise HTTPException(503, "CVAT deployer is not available")
+    if resp.status_code != 200:
+        raise HTTPException(502, f"Delete error: {resp.text}")
 
     dep.deleted_at = datetime.now(UTC)
     await session.commit()
-    return result
+    return cast(dict[str, Any], resp.json())
 
 
 # ── Trigger auto-annotation ───────────────────────────────────────────────────
