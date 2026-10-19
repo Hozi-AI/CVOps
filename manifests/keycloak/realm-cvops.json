@@ -1,0 +1,150 @@
+{
+  "realm": "cvops",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "roles": {
+    "realm": [
+      { "name": "owner", "description": "Full control of the org" },
+      { "name": "editor", "description": "Create and edit org resources" },
+      { "name": "viewer", "description": "Read-only access to the org" }
+    ]
+  },
+  "groups": [
+    {
+      "name": "demo-org",
+      "attributes": { "org_id": ["8d6f3c1e-2b4a-4c7e-9f10-3a5b6c7d8e9f"] },
+      "subGroups": [
+        { "name": "owners", "realmRoles": ["owner"] },
+        { "name": "editors", "realmRoles": ["editor"] },
+        { "name": "viewers", "realmRoles": ["viewer"] }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "cvops-frontend",
+      "name": "CVOps dashboard (browser)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${CVOPS_APP_ORIGIN}/", "http://localhost:5173/"],
+      "webOrigins": ["${CVOPS_APP_ORIGIN}", "http://localhost:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${CVOPS_APP_ORIGIN}/##http://localhost:5173/"
+      },
+      "protocolMappers": [
+        {
+          "name": "cvops-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "cvops-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "org_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "org_id",
+            "claim.name": "org_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "aggregate.attrs": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "cvops-api",
+      "name": "CVOps API (resource server)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "cvops-worker",
+      "name": "CVOps workers (service account)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_WORKER_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": "${GOOGLE_LOGIN_ENABLED}",
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${GOOGLE_CLIENT_ID}",
+        "clientSecret": "${GOOGLE_CLIENT_SECRET}",
+        "defaultScope": "openid email profile",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "github",
+      "displayName": "GitHub",
+      "providerId": "github",
+      "enabled": "${GITHUB_LOGIN_ENABLED}",
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${GITHUB_CLIENT_ID}",
+        "clientSecret": "${GITHUB_CLIENT_SECRET}",
+        "defaultScope": "user:email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Owner",
+      "groups": ["/demo-org/owners"],
+      "credentials": [
+        { "type": "password", "value": "${KEYCLOAK_SEED_USER_PASSWORD}", "temporary": false }
+      ]
+    },
+    {
+      "username": "bob",
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "Editor",
+      "groups": ["/demo-org/editors"],
+      "credentials": [
+        { "type": "password", "value": "${KEYCLOAK_SEED_USER_PASSWORD}", "temporary": false }
+      ]
+    }
+  ]
+}

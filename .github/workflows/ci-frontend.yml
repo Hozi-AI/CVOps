@@ -6,10 +6,9 @@ on:
     paths:
       - 'services/frontend/**'
       - '.github/workflows/ci-frontend.yml'
+  # No paths filter on PRs: these jobs are required checks on dev, and a
+  # required check that never runs blocks the PR forever.
   pull_request:
-    paths:
-      - 'services/frontend/**'
-      - '.github/workflows/ci-frontend.yml'
 
 jobs:
   test:

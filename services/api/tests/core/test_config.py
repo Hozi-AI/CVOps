@@ -13,6 +13,7 @@ def _settings(**overrides) -> Settings:
         "S3_ACCESS_KEY": "GKrealaccesskey",
         "S3_SECRET_KEY": "realsecretkey",
         "ALLOW_INSECURE_DEFAULTS": False,
+        "AUTH_MODE": "local",
     }
     base.update(overrides)
     return Settings(**base)

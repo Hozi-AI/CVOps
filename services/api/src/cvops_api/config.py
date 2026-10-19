@@ -1,3 +1,6 @@
+from typing import Literal
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Known placeholder values that must never be used in production.
@@ -57,6 +60,27 @@ class Settings(BaseSettings):
     # Set to true only for local development when real secrets are not yet configured.
     ALLOW_INSECURE_DEFAULTS: bool = False
 
+    # Dataset import (docs/16-dataset-import.md). Server-path import reads a folder on
+    # the worker's own disk, so it stays disabled unless IMPORT_ROOTS lists the allowed
+    # base directories (comma-separated, absolute). The ZIP limits bound what an
+    # uploaded zip may unpack to (zip-bomb protection).
+    IMPORT_ROOTS: str = ""
+    IMPORT_MAX_ZIP_BYTES: int = 4 * 1024**3  # total uncompressed size
+    IMPORT_MAX_ZIP_ENTRIES: int = 100_000
+    IMPORT_MAX_ZIP_RATIO: int = 100  # uncompressed/compressed, per file over 1 MiB and archive-wide
+
+    # How users log in. No default on purpose: startup refuses to run until it
+    # is chosen. "local" = the API's own register/login (JWT). "none" = no login
+    # at all, every request is DEV_USER_EMAIL (single-user local dev only).
+    AUTH_MODE: Literal["none", "local"] | None = None
+    DEV_USER_EMAIL: str = "dev@example.com"
+
+    @field_validator("AUTH_MODE", mode="before")
+    @classmethod
+    def _blank_auth_mode_is_unset(cls, v: object) -> object:
+        # compose passes `AUTH_MODE=` through as "", which means "not chosen".
+        return None if v == "" else v
+
 
 def validate_secrets(s: Settings) -> None:
     """Raise at server startup if critical secrets are still set to known placeholders.
@@ -65,6 +89,19 @@ def validate_secrets(s: Settings) -> None:
     import Settings freely without needing real secrets in the test environment.
     Bypass with ALLOW_INSECURE_DEFAULTS=true for local development only.
     """
+    # Not bypassable: the login mode is never assumed.
+    if s.AUTH_MODE is None:
+        raise RuntimeError(
+            "AUTH_MODE is not set. Choose how users log in: AUTH_MODE=local "
+            "(register/login page) or AUTH_MODE=none (no login, local dev only)."
+        )
+    # No login means anyone who can reach the API is the dev user, so it must be
+    # paired with the explicit local-dev-only opt-in.
+    if s.AUTH_MODE == "none" and not s.ALLOW_INSECURE_DEFAULTS:
+        raise RuntimeError(
+            "AUTH_MODE=none disables login entirely and is for local dev only; "
+            "it also requires ALLOW_INSECURE_DEFAULTS=true."
+        )
     if s.ALLOW_INSECURE_DEFAULTS:
         return
     flagged = [

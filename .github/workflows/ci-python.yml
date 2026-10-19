@@ -12,11 +12,9 @@ on:
       - 'services/**'
       - 'packages/**'
       - '.github/workflows/ci-python.yml'
+  # No paths filter on PRs: these jobs are required checks on dev, and a
+  # required check that never runs blocks the PR forever.
   pull_request:
-    paths:
-      - 'services/**'
-      - 'packages/**'
-      - '.github/workflows/ci-python.yml'
 
 jobs:
   test:

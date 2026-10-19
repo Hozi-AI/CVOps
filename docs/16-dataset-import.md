@@ -136,12 +136,68 @@ segment, those folder splits are used as-is. Otherwise (none, or a mix) the
 Auto-creating missing classes on import is tracked in
 [#138](https://github.com/Hozi-AI/CVOps/issues/138).
 
-### Server-path caveat
+### Server-path import is allow-listed
 
-`folder_path` is opened by the worker process with **no allow-list or sandbox** —
-any path readable by the worker can be imported by any project member. Treat it as a
-trusted-operator feature on dev boxes. Tracked in
-[#185](https://github.com/Hozi-AI/CVOps/issues/#185).
+`folder_path` is read by the **worker** on its own disk, so it is **off by default**.
+An operator enables it by setting `IMPORT_ROOTS` to a comma-separated list of absolute
+base folders (e.g. `IMPORT_ROOTS=/data/imports`); the folder must also be present inside
+the worker (mount it). A path is resolved first (symlinks and `..` followed), then
+refused unless it lies inside one of the roots. The API checks this up front (a `422`
+with the reason) and the worker checks it again before reading. Images inside the folder
+that are symlinks pointing outside it are skipped. With `IMPORT_ROOTS` empty the
+**Server folder path** tab still shows, but every request returns `422`.
+
+Where to set it:
+
+- **`docker compose`** — `IMPORT_ROOTS` in `manifests/.env` is passed to the `api` and
+  `worker-preprocessing` containers. The paths are paths *inside* the containers.
+- **`tilt up`** — the Tiltfile forwards `IMPORT_ROOTS` from `manifests/.env` to the host
+  `api` and `worker-preprocessing` processes. The paths are host paths. Restart Tilt (or
+  the two resources) after changing it.
+
+There is no default in either: unset means disabled.
+
+A misconfigured list **fails closed**. Every entry must be an absolute path (a relative
+entry would resolve against each process's own working directory, and the API and the
+worker run from different ones), and no entry may resolve to the filesystem root `/`
+(that would allow every path, `/etc` included). Either mistake makes every server-path
+request fail with a `422` naming the bad entry, and makes the worker fail any such run,
+rather than the bad entry being skipped.
+
+**The allow-list is global.** `IMPORT_ROOTS` is one setting for the whole deployment, not
+per org or per project: a member of any org can import any folder under any root, so do
+not put one org's data in a root that another org must not read.
+
+**Roots must be writable only by trusted operators.** The containment check applies to
+the folder you name and to image files. Other files read from inside an allowed folder
+(`data.yaml`, the `labels/` directory and its `*.txt`, and COCO `*.json`) are still
+followed if they are symlinks, including to files outside every root. Their content can
+come back to the requester (class names from `data.yaml`, YAML parse errors in the run's
+error). So anyone who can create files under a root can make an import read files the
+worker can read. Keep roots owned by, and writable only by, the operators who curate
+the datasets.
+
+### Zip limits
+
+An uploaded zip is vetted before anything is extracted. It is refused if it has more than
+`IMPORT_MAX_ZIP_ENTRIES` entries (default 100 000), unpacks to more than
+`IMPORT_MAX_ZIP_BYTES` in total (default 4 GiB), or has a member with an absolute path,
+a drive letter, or a `..` path component. It is also refused if its compression ratio
+exceeds `IMPORT_MAX_ZIP_RATIO`× (default 100), judged two ways:
+
+- **per file**, for any member over 1 MiB (uncompressed / compressed size);
+- **for the whole archive**, once its total unpacked size is over 1 MiB (total unpacked
+  size / length of the zip file). This catches a bomb split into many files that are each
+  at or under 1 MiB, and entries that share the same compressed data. Small zips are not
+  judged, because tiny text files compress extremely well.
+
+If extraction fails partway (a bad CRC, an encrypted member, a full disk), the temporary
+directory and everything already extracted into it are removed and the run fails.
+
+These limits only bound what a zip may unpack to. The worker still downloads the whole
+zip into **memory** before opening it (`StorageBackend.get_bytes`), so a very large import
+also needs a worker with enough RAM. Streaming the download to a temporary file instead is
+a possible follow-up.
 
 ---
 

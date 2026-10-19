@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { client } from '../lib/client'
+import { isNoAuth } from '../lib/authMode'
 
 export interface TokenResponse {
   access_token: string
@@ -24,6 +25,7 @@ export function clearTokens() {
 }
 
 export function isAuthenticated() {
+  if (isNoAuth) return true
   return !!localStorage.getItem('access_token')
 }
 

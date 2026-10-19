@@ -15,7 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cvops_api.config import settings
 from cvops_api.core.auth import get_current_user
+from cvops_api.core.import_safety import import_roots, resolve_import_folder
 from cvops_api.core.storage import get_storage
 from cvops_api.db.session import get_session
 from cvops_api.db.models.auth import User
@@ -97,6 +99,15 @@ async def import_dataset(
             status_code=422,
             detail="Exactly one of blob_hash or folder_path must be provided",
         )
+    if body.folder_path:
+        # Fast feedback only: the worker re-checks (and verifies the folder exists, on its
+        # own filesystem) before reading anything.
+        try:
+            resolve_import_folder(
+                body.folder_path, import_roots(settings.IMPORT_ROOTS), check_exists=False
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
     if body.ontology_id is None:
         raise HTTPException(
             status_code=422,
