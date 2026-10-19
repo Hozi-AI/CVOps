@@ -118,7 +118,7 @@ They are linked by the content hash.
 
 ## Auto-Chain
 
-> **Status (2026-10-10):** `POST /internal/runs/{id}/advance` was never built. Workers advance the DAG **in-process** by calling `advance_workflow` (`services/api/src/cvops_api/engine/coordinator.py`): worker-preprocessing via the engine's `process_step`, worker-cvat via `sync.py`. The `packages/worker-common` runner used by worker-training still POSTs to the missing endpoint, so workflows stall after `step.train` / `step.auto_label` — tracked as #182.
+> **Status (2026-10-10):** `POST /internal/runs/{id}/advance` was never built. Workers advance the DAG **in-process** by calling `advance_workflow` (`services/api/src/cvops_api/engine/coordinator.py`): worker-preprocessing and worker-training (through `packages/worker-common`'s `run_job`) via the engine's `process_step`, worker-cvat via `sync.py`. (Until #182 the worker-common runner POSTed to the missing endpoint, so workflows stalled after `step.train` / `step.auto_label`.)
 
 ```
 preprocessing completes a step (process_step)
