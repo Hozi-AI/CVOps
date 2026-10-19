@@ -242,3 +242,24 @@ async def test_import_folder_path_inside_root_creates_run(
             .all()
         )
         assert any(c.input_refs.get("folder_path") == folder for c in child)
+
+
+@pytest.mark.parametrize(
+    ("roots", "message"), [("relative/imports", "absolute"), ("/", "filesystem root")]
+)
+async def test_import_folder_path_misconfigured_roots_422(
+    factory, import_steps, roots: str, message: str
+) -> None:
+    # A bad IMPORT_ROOTS fails closed: even "/etc" under a root of "/" is refused.
+    user, project, ont = await _seed(factory)
+
+    with patch.object(settings, "IMPORT_ROOTS", roots):
+        async with _client(factory, user) as c:
+            res = await c.post(
+                f"/projects/{project.id}/imports",
+                json={"folder_path": "/etc", "ontology_id": str(ont.id)},
+            )
+
+    assert res.status_code == 422, res.text
+    assert message in res.json()["detail"]
+    assert await _runs_in(factory, project) == 0

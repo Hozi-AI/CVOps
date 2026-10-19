@@ -36,6 +36,27 @@ def test_roots_parsing_ignores_blanks(tmp_path: Path) -> None:
     assert import_roots("") == []
 
 
+@pytest.mark.parametrize("entry", ["data/imports", "./data", "imports", "~/data"])
+def test_relative_root_is_refused(tmp_path: Path, entry: str) -> None:
+    # Relative to whose cwd? The API and the worker differ, so refuse outright.
+    with pytest.raises(ValueError, match="absolute"):
+        import_roots(f"{tmp_path},{entry}")
+
+
+@pytest.mark.parametrize("entry", ["/", "//", "/.", "/..", "/tmp/.."])
+def test_filesystem_root_is_refused(tmp_path: Path, entry: str) -> None:
+    # Checked after resolving, so spellings of "/" are caught too.
+    with pytest.raises(ValueError, match="filesystem root"):
+        import_roots(f"{tmp_path},{entry}")
+
+
+def test_root_that_symlinks_to_slash_is_refused(tmp_path: Path) -> None:
+    link = tmp_path / "everything"
+    link.symlink_to("/", target_is_directory=True)
+    with pytest.raises(ValueError, match="filesystem root"):
+        import_roots(str(link))
+
+
 def test_folder_import_is_disabled_without_roots(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="disabled"):
         resolve_import_folder(str(tmp_path), [])

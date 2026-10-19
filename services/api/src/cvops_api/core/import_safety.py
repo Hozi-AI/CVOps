@@ -14,8 +14,27 @@ _RATIO_MIN_SIZE = 1024 * 1024
 
 
 def import_roots(raw: str) -> list[Path]:
-    """Parse ``IMPORT_ROOTS`` (comma-separated) into resolved absolute directories."""
-    return [Path(part.strip()).resolve() for part in raw.split(",") if part.strip()]
+    """Parse ``IMPORT_ROOTS`` (comma-separated) into resolved absolute directories.
+
+    Fails closed: a misconfigured entry raises ``ValueError`` (the API turns it into a
+    ``422``, the worker fails the run) rather than being dropped or guessed at.
+    Relative entries are refused because the API and the worker run with different working
+    directories, so the same text would allow different folders in each. An entry that
+    resolves to the filesystem root is refused because it would allow every path.
+    """
+    roots: list[Path] = []
+    for part in raw.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        path = Path(entry)
+        if not path.is_absolute():
+            raise ValueError(f"IMPORT_ROOTS entries must be absolute paths (got {entry!r})")
+        resolved = path.resolve()
+        if resolved == Path(resolved.anchor):
+            raise ValueError(f"IMPORT_ROOTS must not include the filesystem root (got {entry!r})")
+        roots.append(resolved)
+    return roots
 
 
 def resolve_import_folder(raw: str, roots: list[Path], *, check_exists: bool = True) -> Path:
