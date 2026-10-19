@@ -1,4 +1,15 @@
-"""tilt-generated
+"""model_artifacts: add the id and deleted_at indexes 0005 left out
+
+Every EntityBase table indexes `id` and `deleted_at`, but the hand-written
+0005_model_artifacts migration only created the model_version_id index. An
+autogenerate run caught the drift and produced this migration.
+
+It was committed as `cfb17149867a_tilt_generated.py` (from the Tilt
+migrate-revision button, inside an unrelated commit) and renamed for #194. The
+revision ID stays `cfb17149867a`: Alembic tracks applied migrations by ID, not
+filename, so every database that already ran it keeps working, and 0008 points
+at this ID as its down_revision. The `0007a` filename slots it between 0007 and
+0008, where it sits in the chain.
 
 Revision ID: cfb17149867a
 Revises: 0007
