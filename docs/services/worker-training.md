@@ -53,7 +53,13 @@ No other worker has this mount.
 | step_type | What it does |
 |---|---|
 | `step.train` | ICD-driven Docker dispatch, reads results, writes model_version |
+| `step.auto_label` | Model inference over samples, writes annotation revisions (YOLO / LLM runners) |
 | `step.evaluate` | Model evaluation on an eval commit (Phase 3) |
+
+The worker doesn't keep a hand-written list: it calls `cvops_steps.register_all()`
+(which also registers the model runners `auto_label` needs) and consumes, and
+orphan-sweeps, every registered step whose `queue` is `training`. A step routed
+to `training` later is picked up with no change here.
 
 ---
 

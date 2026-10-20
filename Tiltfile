@@ -764,8 +764,13 @@ local_resource('migrate-down',
     trigger_mode=TRIGGER_MODE_MANUAL,
 )
 
-local_resource('migrate-revision',
-    cmd='cd services/api && .venv/bin/alembic revision --autogenerate -m "tilt-generated"',
+# Read-only drift check: fails if the models have changes no migration covers.
+# New migrations are created from a terminal with a real description, so the
+# file is numbered 000N_description.py (a button can't ask for one; this used to
+# generate randomly named `<hash>_tilt_generated.py` files, see #194):
+#   services/api/scripts/new-migration.sh "add foo to bar"
+local_resource('migrate-check',
+    cmd='cd services/api && .venv/bin/alembic check',
     env=migrate_env,
     labels=['7-db'],
     resource_deps=['postgres', 'api-install'],
