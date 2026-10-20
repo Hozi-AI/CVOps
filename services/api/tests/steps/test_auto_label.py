@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -39,7 +40,7 @@ class _FakeYoloRunner(ModelRunner):
             {
                 "class_key": "car",
                 "confidence": 0.9,
-                "geometry": {"type": "bbox", "coords": [0.1, 0.2, 0.5, 0.6]},
+                "geometry": {"type": "bbox", "coords": [0.3, 0.4, 0.4, 0.4]},  # [cx, cy, w, h]
             }
         ]
 
@@ -64,11 +65,12 @@ async def test_auto_label_writes_annotation_revisions():
         ]
     )
 
+    model_version_id = str(uuid.uuid4())
     register_runner(_FakeYoloRunner())
     try:
         result = await AutoLabelStep().run(
             ctx,
-            config={"model_version_id": str(uuid.uuid4()), "confidence_threshold": 0.3},
+            config={"model_version_id": model_version_id, "confidence_threshold": 0.3},
             inputs={"sample_ids": [sample_id]},
         )
     finally:
@@ -76,6 +78,31 @@ async def test_auto_label_writes_annotation_revisions():
 
     assert "annotation_revision_ids" in result
     assert len(result["annotation_revision_ids"]) == 1
+
+    insert_params = ctx.session.execute.await_args_list[-1].args[1]
+    assert insert_params["pid"] == ctx.project_id
+    assert json.loads(insert_params["prov"]) == {
+        "source": "auto_label",
+        "runner": "yolo",
+        "model_version_id": model_version_id,
+        "threshold": 0.3,
+    }
+
+
+def test_idempotency_key_includes_effective_threshold():
+    from cvops_steps.auto_label import DEFAULT_CONFIDENCE_THRESHOLD, AutoLabelStep
+
+    step, mv = AutoLabelStep(), str(uuid.uuid4())
+    inputs = {"sample_ids": ["s1"]}
+
+    omitted = step.idempotency_key({"model_version_id": mv}, inputs)
+    explicit_default = step.idempotency_key(
+        {"model_version_id": mv, "confidence_threshold": DEFAULT_CONFIDENCE_THRESHOLD}, inputs
+    )
+    other = step.idempotency_key({"model_version_id": mv, "confidence_threshold": 0.9}, inputs)
+
+    assert omitted == explicit_default
+    assert omitted != other
 
 
 async def test_auto_label_empty_sample_ids_returns_early():
