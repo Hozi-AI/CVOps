@@ -7,9 +7,9 @@ name = "cvops-worker-preprocessing"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-  "cvops-api",    # settings, db session, registry, coordinator (process_step)
-  "cvops-steps",  # step implementations (extract_frames, …)
-  "redis>=5.0",   # stream consumer
+  "cvops-api",            # settings, db session, registry, coordinator (process_step)
+  "cvops-steps",          # step implementations (extract_frames, …)
+  "cvops-worker-common",  # ConsumerLoop: stream consumer, retries/DLQ, orphan recovery
 ]
 
 [project.optional-dependencies]
