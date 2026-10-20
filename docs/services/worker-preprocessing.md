@@ -16,7 +16,7 @@ Executes data ingestion and dataset commit steps: frame extraction and dataset c
 Built on `packages/worker-common` — the shared worker library that provides:
 
 ```
-ConsumerLoop       XREADGROUP loop, XACK, orphan recovery, graceful shutdown
+ConsumerLoop       XREADGROUP loop, XACK, concurrency, retries + DLQ, orphan recovery, graceful shutdown
 SessionFactory     async SQLAlchemy session factory (direct asyncpg, not through the API)
 StorageBackend     MinIO/S3 abstraction (same interface as the API's get_storage())
 WorkerRegistry     resolves step_type → Step instance (same registry as the API)
@@ -49,6 +49,8 @@ REDIS_URL           redis://redis:6379/0
 REDIS_STREAM        preprocessing
 WORKER_TOKEN        (unused — this worker makes no API calls; the API doesn't validate it, #71)
 WORKER_CONCURRENCY  4    (optional — parallel job slots, default 4)
+WORKER_MAX_RETRIES  3    (optional — retries before a message goes to preprocessing:dlq)
+WORKER_RETRY_DELAYS 1,5,30  (optional — seconds before retry 1, 2, 3…; the last repeats)
 ```
 
 ---
@@ -108,10 +110,15 @@ They are linked by the content hash.
    advance_workflow(session, parent_run_id) — in-process, via process_step
      → coordinator enqueues the next ready DAG steps to their streams
 
-6. On failure:
+6. On step failure (the step raised):
    UPDATE runs SET status = 'failed', error = <message>, finished_at = now()
    INSERT events row
    XACK message (do not requeue — retry is user-triggered from dashboard)
+
+7. On infrastructure failure (the claim/write itself raised — Postgres or Redis down):
+   XACK + schedule a retry in preprocessing:retry (1s, 5s, 30s);
+   after WORKER_MAX_RETRIES, park the message on preprocessing:dlq
+   (see redis-streams.md → Retries and the Dead-Letter Queue)
 ```
 
 ---
