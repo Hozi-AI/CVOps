@@ -50,6 +50,21 @@ jobs:
               -e packages/worker-common
               -e packages/steps
               -e "services/worker-training[dev]"
+          # worker-common: the ConsumerLoop (retries/DLQ) every worker runs.
+          - name: worker-common
+            path: packages/worker-common
+            install: >-
+              pip install
+              -e services/api
+              -e "packages/worker-common[dev]"
+          - name: worker-preprocessing
+            path: services/worker-preprocessing
+            install: >-
+              pip install
+              -e services/api
+              -e packages/worker-common
+              -e packages/steps
+              -e "services/worker-preprocessing[dev]"
           - name: worker-cvat
             path: services/worker-cvat
             install: >-
