@@ -13,9 +13,7 @@ the small internal pieces for a single message/iteration:
   * ``cvops_worker_common.runner.run_job`` — the per-message handler: it claims
     the run (FOR UPDATE SKIP LOCKED + status='pending' guard) and hands it to
     the engine's ``process_step``, which runs, finalises and advances it.
-  * the ack-always contract           — re-implemented inline the way
-    ``ConsumerLoop._consume_loop`` does it (its handler dispatch is inlined in
-    the loop body and cannot be imported directly).
+  * ``ConsumerLoop._dispatch``         — settles one message: ack, retry, or DLQ.
   * ``ConsumerLoop._recover_orphans`` — one recovery pass against the test DB.
 
 The runner and consumer both open their own session via the module-level
