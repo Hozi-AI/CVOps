@@ -29,7 +29,7 @@ export function TableCaption({ className, ...rest }: HTMLAttributes<HTMLTableCap
 }
 
 export function TableHeader({ className, ...rest }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('border-b border-border bg-surface-1/40', className)} {...rest} />
+  return <thead className={cn('border-b border-border bg-surface-1', className)} {...rest} />
 }
 
 export function TableBody({ className, ...rest }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -39,7 +39,7 @@ export function TableBody({ className, ...rest }: HTMLAttributes<HTMLTableSectio
 export function TableRow({ className, ...rest }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn('border-b border-border transition-colors hover:bg-surface-3/60', className)}
+      className={cn('border-b border-border transition-colors hover:bg-surface-3', className)}
       {...rest}
     />
   )
