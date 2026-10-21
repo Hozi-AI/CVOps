@@ -151,7 +151,7 @@ For each result, re-enqueue into the Redis Stream. Consumer group deduplication 
 
 ## Retries and the Dead-Letter Queue
 
-worker-preprocessing and worker-training run `packages/worker-common`'s `ConsumerLoop`, so they handle failures the same way (`cvops_worker_common/retry.py`). worker-cvat still has its own loop with no retries; moving it onto `ConsumerLoop` is the second half of #189.
+Every worker (preprocessing, training, cvat) runs `packages/worker-common`'s `ConsumerLoop`, so they all handle failures the same way (`cvops_worker_common/retry.py`).
 
 | What happened | Result |
 |---|---|
@@ -159,7 +159,7 @@ worker-preprocessing and worker-training run `packages/worker-common`'s `Consume
 | Malformed message: no/invalid `job_id`, or a `kind` this worker has no handler for | Straight to `<stream>:dlq`, no retries. |
 | Handler raised (Postgres/Redis dropped, CVAT unreachable, …) | `XACK` + schedule a retry after 1s, 5s, 30s (`WORKER_RETRY_DELAYS`). After `WORKER_MAX_RETRIES` (3) retries → `<stream>:dlq`. |
 
-- **Retries wait in Redis**, in the sorted set `<stream>:retry` (score = due time), written in the same transaction as the `XACK`. Each worker moves due entries back onto the stream once a second; `ZREM` decides which worker re-sends an entry, so it's sent once. A worker that dies mid back-off loses nothing.
+- **Retries wait in Redis**, in the sorted set `<stream>:retry` (score = due time), written in the same transaction as the `XACK`. Each worker moves due entries back onto the stream once a second. Moving an entry is one Lua script (check it is still there, `XADD` it, then `ZREM` it), so only one worker re-sends it, and neither a crash nor a failed `XADD` can drop it. A worker that dies mid back-off loses nothing.
 - **Attempts are counted per message identity** (`worker:retry:<stream>:<identity>`, 1h TTL): `job:<job_id>` for run doorbells, `<kind>:<hash of fields>` for doorbells like `{kind: cvat_sync, cvat_task_id}`, which carry no `job_id`.
 - **DLQ entries** keep the original fields plus `original_msg_id`, `dlq_reason` and `attempts`; the stream is capped at ~10,000 entries. Inspect with `XRANGE <stream>:dlq - +`. To replay one, `XADD` its original fields back onto `<stream>`.
 - A run doorbell in the DLQ still leaves its run `pending` in Postgres, so orphan recovery keeps re-enqueueing it once the outage is over. Doorbells without a run (`cvat_sync`) have no such safety net, so the DLQ is where to find them.

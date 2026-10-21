@@ -21,12 +21,15 @@ also serves a small HTTP API on **:8001**:
    function. The API's `cvat.py` router proxies the dashboard to these endpoints
    via `MODEL_DEPLOYER_URL → worker-cvat:8001`. See **Model deployment to CVAT**.
 
-> **Architecture note.** The worker no longer uses `worker-common`'s
-> `ConsumerLoop`; it runs its own consumer-group loop (`worker_cvat/worker.py`,
-> entry point `python -m worker_cvat`). Each `cvat` message is routed by shape:
-> a `{kind: "cvat_sync", cvat_task_id}` doorbell → the pull handler
-> (`handle_cvat_sync`); a `{job_id, step_type}` doorbell → `process_step`
-> (covers both `step.human_review` and `step.deploy_model`). Postgres is the
+> **Architecture note.** The worker runs `worker-common`'s `ConsumerLoop`
+> (`worker_cvat/worker.py`, entry point `python -m worker_cvat`), like every other
+> worker, so it gets the shared retries, dead-letter queue (`cvat:dlq`) and orphan
+> recovery (see `docs/services/redis-streams.md`). Each `cvat` message is routed
+> by shape: a `{kind: "cvat_sync", cvat_task_id}` doorbell → the pull handler
+> (`handle_cvat_sync`, passed as the loop's `sync_handler`); a `{job_id, step_type}`
+> doorbell → `process_step` (covers both `step.human_review` and
+> `step.deploy_model`). The :8001 HTTP server runs as one of the loop's
+> `background` tasks. Postgres is the
 > authority; Redis is only the doorbell. Storage is **Garage (S3)**, not MinIO.
 > Several sections below predate this and describe the original aspirational
 > design (auto_label / export_yolo as cvat steps, MinIO, advance via
@@ -40,7 +43,7 @@ also serves a small HTTP API on **:8001**:
 Built on `packages/worker-common` — the shared worker library that provides:
 
 ```
-ConsumerLoop       XREADGROUP loop, XACK, orphan recovery, graceful shutdown
+ConsumerLoop       XREADGROUP loop, XACK, retries + DLQ, orphan recovery, graceful shutdown
 SessionFactory     async SQLAlchemy session factory (direct asyncpg, not through the API)
 StorageBackend     MinIO/S3 abstraction (same interface as the API's get_storage())
 WorkerRegistry     resolves step_type → Step instance (same registry as the API)
@@ -85,6 +88,11 @@ CVAT_WEBHOOK_SECRET   <secret CVAT signs completion webhooks with>
 # Deploy role (model deployment — read by the deployer / cvat_client)
 CVAT_HOST             http://cvat_server:8080
 MODEL_DEPLOYER_PORT   8001                        # HTTP API port
+
+# Consumer loop (worker-common)
+WORKER_CONCURRENCY    4                           # parallel message slots
+WORKER_MAX_RETRIES    3                           # retries before cvat:dlq
+WORKER_RETRY_DELAYS   1,5,30                      # back-off seconds; last repeats
 NUCTL_PATH            /abs/path/to/services/worker-cvat/nuctl
 ```
 
