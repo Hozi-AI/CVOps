@@ -155,9 +155,10 @@ def assign_grouped(
         1. Samples of groups in `pinned` keep the split the parent commit gave them.
         2. The remaining groups are visited in `hash(seed, group)` order, which is
            deterministic and independent of group size and upload order.
-        3. Each group goes to the first of train -> val -> test whose running count is
-           still below its target; if every split is full, to the one with the largest
-           remaining deficit.
+        3. Each group goes to the split furthest below its target (largest deficit),
+           ties to the earlier of train -> val -> test. Filling train first instead
+           would let it swallow whole videos past its share: three equal videos
+           would all land in train and leave val empty.
 
     Because groups are indivisible the ratios are only approximate, and with few
     groups a split can stay empty; that is reported in `SplitResult.warnings`
@@ -214,9 +215,8 @@ def assign_grouped(
         (g for g in members if g not in pinned), key=lambda g: _unit_hash(str(seed), g)
     ):
         sids = members[group]
-        choice = next((n for n in active if counts[n] < target[n]), None)
-        if choice is None:
-            choice = max(active, key=lambda n: target[n] - counts[n])
+        # Rounded so float noise (1 - 0.7 - 0.15 > 0.15) can't break a val/test tie.
+        choice = max(active, key=lambda n: round(target[n] - counts[n], 6))
         for sid in sids:
             splits[sid] = choice
         counts[choice] += len(sids)

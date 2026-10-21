@@ -54,6 +54,14 @@ def test_frame_ratios_land_near_target_with_many_videos() -> None:
     assert abs(counts["val"] / total - 0.15) < 0.08
 
 
+def test_few_equal_videos_still_fill_val() -> None:
+    # Filling train first put all three videos in train and left val empty.
+    ids, group_of = _videos({"a": 100, "b": 100, "c": 100})
+    counts = _frames(assign_grouped(ids, group_of, 0.7, 0.15, 42).splits)
+    assert counts["train"] == 200
+    assert counts["val"] == 100
+
+
 def test_lone_video_goes_whole_to_one_split_and_warns() -> None:
     ids, group_of = _videos({"only": 50})
     res = assign_grouped(ids, group_of, 0.7, 0.15, 42)
