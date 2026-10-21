@@ -67,15 +67,16 @@ export default {
         info:    '#38BDF8',
 
         // ── Data-viz categorical (iris + signal lead, colorblind-safer) ────
+        // Values live in index.css (--chart-N) so they switch with the theme.
         chart: {
-          1: '#7B6CF6',  // iris
-          2: '#38BDF8',  // sky
-          3: '#34D399',  // emerald
-          4: '#FBBF24',  // amber
-          5: '#F472B6',  // pink
-          6: '#C6F24E',  // signal
-          7: '#A2A9B6',  // mist
-          8: '#2DD4BF',  // teal
+          1: 'var(--chart-1)',  // iris
+          2: 'var(--chart-2)',  // sky
+          3: 'var(--chart-3)',  // emerald
+          4: 'var(--chart-4)',  // amber
+          5: 'var(--chart-5)',  // pink
+          6: 'var(--chart-6)',  // signal
+          7: 'var(--chart-7)',  // mist
+          8: 'var(--chart-8)',  // teal
         },
       },
 
