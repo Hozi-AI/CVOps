@@ -7,6 +7,8 @@ ConsumerLoop — the Redis Streams consumer every worker runs.
     ``<stream>:dlq`` once ``WORKER_MAX_RETRIES`` is used up (see ``retry.py``).
     Malformed messages go to the DLQ straight away.
   • Re-enqueues pending runs that Redis may have lost (orphan recovery).
+  • Runs any worker-specific ``background`` coroutines alongside (e.g.
+    worker-cvat's HTTP server) and hands them the stop event.
   • Stops on SIGTERM/SIGINT after finishing the messages in flight.
 
 Postgres is the authority for job state; Redis is just the doorbell.
@@ -48,6 +50,9 @@ JobHandler = Callable[[str, str], Coroutine[Any, Any, None]]
 # A sync handler receives the full message fields (not a runs row) — used for
 # out-of-band doorbells like CVAT completion that carry no job_id/step_type.
 SyncHandler = Callable[[dict[str, str]], Coroutine[Any, Any, None]]
+# A long-lived coroutine that runs next to the consume loop and returns once the
+# stop event it is given is set.
+BackgroundTask = Callable[[asyncio.Event], Coroutine[Any, Any, None]]
 
 BLOCK_MS = 5000
 # How often each worker moves due retries back onto its stream.
@@ -65,6 +70,7 @@ class ConsumerLoop:
         concurrency: int | None = None,
         max_retries: int | None = None,
         retry_delays: Sequence[float] | None = None,
+        background: Sequence[BackgroundTask] = (),
     ) -> None:
         self.stream = stream
         # None → every registered step whose queue is this stream, resolved in
@@ -87,6 +93,7 @@ class ConsumerLoop:
         self.handler: JobHandler = handler or run_job
         # Messages carrying a "kind" field route here instead of the run handler.
         self.sync_handler: SyncHandler | None = sync_handler
+        self.background = tuple(background)
 
     def my_step_types(self) -> list[str]:
         """Registered step types whose queue routes to this stream."""
@@ -127,12 +134,16 @@ class ConsumerLoop:
                 asyncio.create_task(self._orphan_recovery_loop(redis)),
                 asyncio.create_task(self._retry_pump(retries)),
             ]
+            extras = [asyncio.create_task(self._run_background(fn)) for fn in self.background]
             try:
                 await self._consume_loop(redis, retries)
             finally:
                 for task in background:
                     task.cancel()
-                await asyncio.gather(*background, return_exceptions=True)
+                # Worker-specific tasks shut down on the stop event rather than
+                # being cancelled, so e.g. an HTTP server can close cleanly.
+                self._stop.set()
+                await asyncio.gather(*background, *extras, return_exceptions=True)
         finally:
             await redis.aclose()
             await close_redis()
@@ -251,6 +262,14 @@ class ConsumerLoop:
         except ValueError:
             return f"invalid job_id {job_id!r}"
         return None
+
+    async def _run_background(self, fn: BackgroundTask) -> None:
+        # Log a crashed side task (say, its port is taken) when it happens: the
+        # consume loop keeps going, and gather() would only swallow it at shutdown.
+        try:
+            await fn(self._stop)
+        except Exception:
+            logger.exception("Background task %s failed", getattr(fn, "__name__", fn))
 
     async def _retry_pump(self, retries: RetryQueue) -> None:
         while not self._stop.is_set():

@@ -8,6 +8,7 @@ import time
 import uuid
 
 import pytest
+from redis.exceptions import ResponseError
 
 from cvops_worker_common.retry import RETRY_COUNTER_TTL_SECONDS, RetryQueue, message_identity
 
@@ -147,7 +148,7 @@ async def test_requeue_moves_only_due_retries(queue, fake_redis) -> None:  # typ
 
 
 async def test_concurrent_pumps_requeue_each_retry_once(queue, fake_redis, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """Every worker runs a pump; ZREM-as-claim keeps two of them from both re-sending."""
+    """Every worker runs a pump; the script's membership check keeps two of them from both re-sending."""
     members = {
         json.dumps({"msg_id": f"{i}-0", "fields": {"job_id": str(i)}}, sort_keys=True): 0
         for i in range(20)
@@ -170,3 +171,23 @@ async def test_concurrent_pumps_requeue_each_retry_once(queue, fake_redis, monke
 
     assert sum(moved) == 20
     assert await fake_redis.xlen(STREAM) == 20
+
+
+async def test_a_failed_resend_keeps_the_retry(fake_redis) -> None:  # type: ignore[no-untyped-def]
+    """Re-send and remove are one script, re-send first: if the XADD fails, the
+    entry stays in the retry set. Matters most for cvat_sync doorbells, which no
+    Postgres row can recover."""
+    q = RetryQueue(fake_redis, "broken", "g", max_retries=3, delays=(1.0,))
+    fields = {"kind": "cvat_sync", "cvat_task_id": "7"}
+    member = json.dumps({"msg_id": "1-0", "fields": fields}, sort_keys=True)
+    await fake_redis.zadd(q.retry_key, {member: 0})
+    await fake_redis.set("broken", "not a stream")  # XADD → WRONGTYPE
+
+    with pytest.raises(ResponseError):
+        await q.requeue_due()
+    assert await fake_redis.zrange(q.retry_key, 0, -1) == [member]
+
+    await fake_redis.delete("broken")
+    assert await q.requeue_due() == 1
+    assert [f for _id, f in await fake_redis.xrange("broken")] == [fields]
+    assert await fake_redis.zcard(q.retry_key) == 0

@@ -31,11 +31,16 @@ def setup_registry() -> list[str]:
     return sorted(reg.type_key for reg in registry.all() if queue_for(reg.impl) == STREAM)
 
 
+def build_loop(step_types: list[str]) -> ConsumerLoop:
+    # One job at a time whatever WORKER_CONCURRENCY says: parallel trainers on
+    # one worker would fight over the same GPU.
+    return ConsumerLoop(stream=STREAM, step_types=step_types, concurrency=1)
+
+
 def main() -> None:
     step_types = setup_registry()
     logger.info("worker-training consuming stream=%r steps=%s", STREAM, step_types)
-    loop = ConsumerLoop(stream=STREAM, step_types=step_types)
-    asyncio.run(loop.run_forever())
+    asyncio.run(build_loop(step_types).run_forever())
 
 
 if __name__ == "__main__":
