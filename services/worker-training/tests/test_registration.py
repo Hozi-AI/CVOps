@@ -40,3 +40,14 @@ def test_auto_label_resolves_with_its_model_runners(step_types: list[str]) -> No
     get_runner only looks the runner up, so ultralytics is never imported."""
     assert registry.resolve("step.auto_label").impl.queue == STREAM
     assert get_runner("yolo").name == "yolo"
+
+
+def test_runs_one_job_at_a_time_whatever_the_env_says(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Parallel trainers on one worker would share a GPU, so the cap is in code,
+    not only in compose (a deploy that misses WORKER_CONCURRENCY=1 still gets 1)."""
+    from cvops_worker_common.config import worker_settings
+
+    from worker_training.main import build_loop
+
+    monkeypatch.setattr(worker_settings, "WORKER_CONCURRENCY", 4)
+    assert build_loop(["step.train"]).concurrency == 1
