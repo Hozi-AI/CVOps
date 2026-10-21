@@ -51,6 +51,9 @@ export function AddToDatasetDialog({
         'Added to dataset',
         `${res.committed_count} committed${res.skipped_count ? `, ${res.skipped_count} skipped (unannotated)` : ''}`,
       )
+      if (res.warnings?.length) {
+        toast.warning('Split is uneven', res.warnings.join('\n'), 8000)
+      }
       onDone()
       onClose()
     } catch {

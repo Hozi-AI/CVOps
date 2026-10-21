@@ -260,6 +260,8 @@ export interface CommitFromSamplesResult {
   commit_id: string
   committed_count: number
   skipped_count: number
+  /** e.g. "val is empty: ..." — a split couldn't be filled without cutting a video */
+  warnings?: string[]
 }
 
 export function useCommitFromSamples() {
