@@ -279,3 +279,56 @@ def test_step_types_default_to_the_steps_routed_to_this_stream(monkeypatch) -> N
     ]
     assert ConsumerLoop(stream="training").my_step_types() == ["step.train"]
     assert ConsumerLoop(stream="cvat").my_step_types() == []
+
+
+# ── background tasks ─────────────────────────────────────────────────────────
+
+
+async def test_background_tasks_run_alongside_and_stop_with_the_loop(
+    fake_redis, monkeypatch, caplog
+) -> None:  # type: ignore[no-untyped-def]
+    """worker-cvat serves HTTP this way. A side task gets the stop event and is
+    awaited on shutdown; one that crashes is logged at once and consuming goes on."""
+    import cvops_worker_common.consumer as consumer
+
+    async def _noop(*_a, **_k) -> None:  # type: ignore[no-untyped-def]
+        return None
+
+    # run_forever without the API's global Redis or Postgres.
+    monkeypatch.setattr(consumer, "init_redis", _noop)
+    monkeypatch.setattr(consumer, "close_redis", _noop)
+    monkeypatch.setattr(consumer.Redis, "from_url", staticmethod(lambda *_a, **_k: fake_redis))
+    monkeypatch.setattr(fake_redis, "aclose", _noop)  # the fixture closes it
+
+    started = asyncio.Event()
+    shut_down: list[str] = []
+
+    async def server(stop: asyncio.Event) -> None:
+        started.set()
+        await stop.wait()
+        shut_down.append("server")
+
+    async def broken(stop: asyncio.Event) -> None:
+        raise OSError("port already in use")
+
+    handled: list[str] = []
+
+    async def handler(job_id: str, step_type: str) -> None:
+        handled.append(job_id)
+
+    loop = make_loop(handler=handler, background=[broken, server])
+    monkeypatch.setattr(loop, "_recover_orphans", _noop)
+    task = asyncio.create_task(loop.run_forever())
+
+    await asyncio.wait_for(started.wait(), 5)
+    job = _job()
+    await fake_redis.xadd(STREAM, job)
+    async with asyncio.timeout(5):
+        while not handled:
+            await asyncio.sleep(0.02)
+    assert handled == [job["job_id"]]  # still consuming after `broken` crashed
+    assert "Background task broken failed" in caplog.text
+
+    loop.stop()
+    await asyncio.wait_for(task, 5)
+    assert shut_down == ["server"]
