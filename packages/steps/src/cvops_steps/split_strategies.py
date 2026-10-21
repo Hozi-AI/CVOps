@@ -10,10 +10,14 @@ from __future__ import annotations
 from cvops_api.core.split_strategies import (
     SPLIT_STRATEGIES,
     SplitFn,
+    SplitResult,
     _bucket,
     _unit_hash,
+    assign_grouped,
     by_source_group,
     get,
+    group_key,
+    majority_splits,
     random_seeded,
     register,
 )
@@ -21,10 +25,14 @@ from cvops_api.core.split_strategies import (
 __all__ = [
     "SPLIT_STRATEGIES",
     "SplitFn",
+    "SplitResult",
     "_bucket",
     "_unit_hash",
+    "assign_grouped",
     "by_source_group",
     "get",
+    "group_key",
+    "majority_splits",
     "random_seeded",
     "register",
 ]
