@@ -10,7 +10,8 @@ Retries wait in Redis, not in the worker's memory. A failed message goes into
 the sorted set ``<stream>:retry`` (score = when it is due) in the same
 transaction that acks it, and every worker's ``requeue_due`` pump moves due
 entries back onto the stream. A worker that dies mid back-off loses nothing:
-another worker's pump re-sends the message.
+another worker's pump re-sends the message. Moving an entry is one Lua script
+(re-send, then remove), so no crash or Redis error can drop it in between.
 
 Attempts are counted per message *identity*, not per Redis message id (each
 retry is a new message with a new id): ``job:<job_id>`` for run doorbells, and
@@ -38,6 +39,20 @@ DLQ_MAXLEN = 10_000
 # Fields the DLQ adds; ignored by message_identity so a replayed entry keeps its identity.
 _DLQ_FIELDS = frozenset({"original_msg_id", "dlq_reason", "attempts"})
 _REQUEUE_BATCH = 100
+
+# Move one retry entry back onto the stream, atomically. KEYS = [retry set,
+# stream]; ARGV = [member, field1, value1, ...]. The membership check is the
+# claim: when several workers' pumps see the same entry, only the first script
+# to run finds it. XADD comes before ZREM because Redis does not roll back a
+# script that errors part-way: if the XADD fails, the entry stays for next time.
+_REQUEUE_ONE = """
+if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then
+  return 0
+end
+redis.call('XADD', KEYS[2], '*', unpack(ARGV, 2))
+redis.call('ZREM', KEYS[1], ARGV[1])
+return 1
+"""
 
 
 def message_identity(fields: dict[str, str]) -> str:
@@ -71,6 +86,7 @@ class RetryQueue:
         self.delays = tuple(delays)
         self.dlq_stream = f"{stream}:dlq"
         self.retry_key = f"{stream}:retry"
+        self._requeue_one = redis.register_script(_REQUEUE_ONE)
 
     def _counter_key(self, fields: dict[str, str]) -> str:
         return f"worker:retry:{self.stream}:{message_identity(fields)}"
@@ -150,9 +166,8 @@ class RetryQueue:
         )
         moved = 0
         for member in due:
-            # ZREM is the claim: when several workers' pumps see the same entry,
-            # only the one that removes it re-sends it.
-            if await self.redis.zrem(self.retry_key, member):
-                await self.redis.xadd(self.stream, json.loads(member)["fields"])
+            fields: dict[str, str] = json.loads(member)["fields"]
+            flat = [part for pair in fields.items() for part in pair]
+            if await self._requeue_one(keys=[self.retry_key, self.stream], args=[member, *flat]):
                 moved += 1
         return moved
