@@ -4,7 +4,7 @@ import { useCommitDiff, useCommitFromSamples, useCommitSamples, useDownloadCommi
 import { useDataSources } from '../../api/data-sources'
 import { useThumbnailUrl, type Sample } from '../../api/samples'
 import { cn } from '../../lib/cn'
-import { Button, EmptyState, Select } from '../ui'
+import { Button, EmptyState, Select, Tabs, TabsContent, TabsList, TabsTrigger } from '../ui'
 import { CommitStats } from './CommitStats'
 import { Lightbox } from './SampleGrid'
 
@@ -358,35 +358,19 @@ export function CommitContents({
       )}
 
       {/* View toggle — full dataset state ("Files") vs. diff against parent ("Changes"). */}
-      <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-2 p-0.5" role="tablist" aria-label="Commit view">
-        {([
-          { key: 'files', label: 'Files' },
-          { key: 'changes', label: 'Changes' },
-        ] as const).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={view === t.key}
-            onClick={() => setView(t.key)}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              view === t.key ? 'bg-iris/15 text-text-primary' : 'text-text-muted hover:text-text-secondary',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={view} onValueChange={(v) => setView(v as ViewKey)}>
+        <TabsList className="mb-4" aria-label="Commit view">
+          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="changes">Changes</TabsTrigger>
+        </TabsList>
 
-      {commit?.stats && (
-        <div className="mb-4">
-          <CommitStats stats={commit.stats} />
-        </div>
-      )}
+        {commit?.stats && (
+          <div className="mb-4">
+            <CommitStats stats={commit.stats} />
+          </div>
+        )}
 
-      {view === 'files' ? (
-        <>
+        <TabsContent value="files">
           <div className="mb-3 flex items-center justify-between gap-3">
             <Select
               className="w-auto"
@@ -452,15 +436,16 @@ export function CommitContents({
               )}
             </div>
           )}
-        </>
-      ) : (
-        <ChangesView
-          datasetId={datasetId}
-          commitId={commitId}
-          parentCommitId={commit?.parent_commit_id ?? null}
-          sampleById={sampleById}
-        />
-      )}
+        </TabsContent>
+        <TabsContent value="changes">
+          <ChangesView
+            datasetId={datasetId}
+            commitId={commitId}
+            parentCommitId={commit?.parent_commit_id ?? null}
+            sampleById={sampleById}
+          />
+        </TabsContent>
+      </Tabs>
 
       {openIndex !== null && (
         <Lightbox
