@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from datetime import datetime, UTC
 
-from sqlalchemy import select, tuple_, update
+from sqlalchemy import ColumnElement, and_, func, or_, select, tuple_, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, cast
@@ -14,6 +14,7 @@ from typing import Any, cast
 from cvops_api.core.auth import get_current_user
 from cvops_api.core.storage import get_storage, public_s3_endpoint
 from cvops_api.core.audit import emit_event
+from cvops_api.core import split_strategies
 from cvops_api.core.pagination import decode_cursor_parts, decode_cursor_uuid
 from cvops_api.core.sample_view import build_sample_outs
 from cvops_api.db.session import get_session
@@ -50,6 +51,10 @@ from cvops_api.schemas.runs import RunOut, TrainCommitRequest
 
 router = APIRouter()
 
+# Same default seed as the `commit_dataset` step, so a given source is bucketed
+# identically whichever path creates the commit.
+SPLIT_SEED = 42
+
 
 async def _check_project(
     project_id: uuid.UUID,
@@ -69,16 +74,101 @@ async def _check_project(
     return proj
 
 
-def _split_counts(total: int, strategy: dict[str, Any]) -> tuple[int, int]:
-    """Return (train_count, val_count) for `total` samples given a split strategy.
+async def _assign_splits(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    sample_ids: list[uuid.UUID],
+    strategy: dict[str, Any],
+    parent_commit_id: uuid.UUID | None = None,
+) -> split_strategies.SplitResult:
+    """Assign every sample a split, never cutting a video (or image) across sets.
+
+    Frames of one video share a group; imports and single images are their own
+    group (see `split_strategies.group_key`). Groups already in `parent_commit_id`
+    keep the split they have there, new groups are filled toward the target frame
+    counts of the cumulative dataset. The result also carries warnings (e.g. an
+    empty val) the caller returns to the user.
 
     The ratios are validated up front on the request schema (see
     `schemas.datasets._validate_split_strategy`), so here we only apply the
-    defaults and floor the counts; the remainder becomes the test split.
+    defaults; the remainder becomes the test split.
     """
-    train_ratio = strategy.get("train_ratio", 0.7)
-    val_ratio = strategy.get("val_ratio", 0.15)
-    return int(total * train_ratio), int(total * val_ratio)
+    rows = await session.execute(
+        select(Sample.id, Sample.source_id, Sample.frame_index).where(
+            Sample.id.in_(sample_ids), Sample.project_id == project_id
+        )
+    )
+    group_of = {
+        str(sid): split_strategies.group_key(str(sid), str(src), frame_index)
+        for sid, src, frame_index in rows.all()
+    }
+    missing = sorted({str(sid) for sid in sample_ids} - group_of.keys())
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"samples not in project: {', '.join(missing)}",
+        )
+
+    pinned: dict[str, str] = {}
+    existing: dict[str, int] = {}
+    if parent_commit_id is not None:
+        pinned, existing = await _parent_split_state(
+            session, parent_commit_id, sample_ids, set(group_of.values())
+        )
+
+    return split_strategies.assign_grouped(
+        [str(sid) for sid in sample_ids],
+        group_of,
+        strategy.get("train_ratio", 0.7),
+        strategy.get("val_ratio", 0.15),
+        SPLIT_SEED,
+        pinned=pinned,
+        existing=existing,
+    )
+
+
+async def _parent_split_state(
+    session: AsyncSession,
+    parent_commit_id: uuid.UUID,
+    batch_ids: list[uuid.UUID],
+    batch_groups: set[str],
+) -> tuple[dict[str, str], dict[str, int]]:
+    """What the parent commit already decided, for the groups in this batch.
+
+    Returns ({group: split} for groups present in the parent — the most common
+    split if the parent is already mixed — and {split: frames} for parent samples
+    that are not part of this batch, since the batch overrides those).
+    """
+    video_sources = [
+        uuid.UUID(g.removeprefix("src:")) for g in batch_groups if g.startswith("src:")
+    ]
+    in_batch_groups: ColumnElement[bool] = Sample.id.in_(batch_ids)
+    if video_sources:
+        in_batch_groups = or_(
+            in_batch_groups,
+            and_(Sample.frame_index.is_not(None), Sample.source_id.in_(video_sources)),
+        )
+    rows = await session.execute(
+        select(CommitSample.sample_id, Sample.source_id, Sample.frame_index, CommitSample.split)
+        .join(Sample, Sample.id == CommitSample.sample_id)
+        .where(CommitSample.commit_id == parent_commit_id, in_batch_groups)
+    )
+    pinned = split_strategies.majority_splits(
+        (group, split)
+        for sid, src, frame_index, split in rows.all()
+        if (group := split_strategies.group_key(str(sid), str(src), frame_index)) in batch_groups
+    )
+
+    counted = await session.execute(
+        select(CommitSample.split, func.count())
+        .where(
+            CommitSample.commit_id == parent_commit_id,
+            CommitSample.sample_id.not_in(batch_ids),
+        )
+        .group_by(CommitSample.split)
+    )
+    existing = {split: n for split, n in counted.all()}
+    return pinned, existing
 
 
 # ── Datasets ─────────────────────────────────────────────────────────────────
@@ -432,22 +522,19 @@ async def create_commit(
     await session.flush()
 
     # Assign splits
-    total = len(body.sample_ids)
-    train_count, val_count = _split_counts(total, body.split_strategy)
+    assigned = await _assign_splits(
+        session, dataset.project_id, body.sample_ids, body.split_strategy
+    )
+    if assigned.warnings:
+        commit.stats = {**(commit.stats or {}), "split_warnings": assigned.warnings}
 
-    for idx, (sid, arid) in enumerate(zip(body.sample_ids, body.annotation_revision_ids)):
-        if idx < train_count:
-            split = "train"
-        elif idx < train_count + val_count:
-            split = "val"
-        else:
-            split = "test"
+    for sid, arid in zip(body.sample_ids, body.annotation_revision_ids):
         session.add(
             CommitSample(
                 commit_id=commit.id,
                 sample_id=sid,
                 annotation_revision_id=arid,
-                split=split,
+                split=assigned.splits[str(sid)],
             )
         )
 
@@ -567,8 +654,9 @@ async def create_commit_from_samples(
     parent_commit_id = ref.target_commit_id if ref is not None else None
 
     # Assign splits over the new batch.
-    total = len(committed)
-    train_count, val_count = _split_counts(total, body.split_strategy)
+    assigned = await _assign_splits(
+        session, dataset.project_id, committed, body.split_strategy, parent_commit_id
+    )
 
     # Cumulative state (a git "tree"): the new commit's commit_samples are the
     # parent commit's commit_samples UNION this batch. The batch wins on overlap
@@ -591,14 +679,8 @@ async def create_commit_from_samples(
     # The batch wins on overlap (and adds batch-only samples).
     # TODO(#141): removal semantics — a future "this commit deletes sample X"
     # would drop X from `merged` here instead of always unioning.
-    for idx, sid in enumerate(committed):
-        if idx < train_count:
-            split = "train"
-        elif idx < train_count + val_count:
-            split = "val"
-        else:
-            split = "test"
-        merged[sid] = (winning[sid][0] if sid in winning else None, split)
+    for sid in committed:
+        merged[sid] = (winning[sid][0] if sid in winning else None, assigned.splits[str(sid)])
 
     # Recompute stats over the FULL cumulative set, not just the batch.
     by_split: dict[str, int] = {}
@@ -619,6 +701,7 @@ async def create_commit_from_samples(
             "sample_count": len(merged),
             "annotated": cumulative_annotated,
             "by_split": by_split,
+            **({"split_warnings": assigned.warnings} if assigned.warnings else {}),
         },
         parent_commit_id=parent_commit_id,
     )
@@ -677,6 +760,7 @@ async def create_commit_from_samples(
         commit_id=commit.id,
         committed_count=len(committed),
         skipped_count=0,
+        warnings=assigned.warnings,
     )
 
 

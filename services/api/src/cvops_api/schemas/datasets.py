@@ -86,6 +86,7 @@ class CommitFromSamplesOut(BaseModel):
     commit_id: uuid.UUID
     committed_count: int
     skipped_count: int
+    warnings: list[str] = []
 
 
 class RefCreate(BaseModel):

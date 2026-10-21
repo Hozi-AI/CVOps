@@ -37,6 +37,7 @@ from cvops_api.db.models.versioning import (
 from cvops_api.routers import datasets
 from tests.db.conftest import (
     make_commit,
+    make_data_source,
     make_dataset,
     make_ontology,
     make_ref,
@@ -646,3 +647,282 @@ async def test_delete_dataset_link_cross_org_404(factory) -> None:
     async with _client(factory, other) as c:
         res = await c.delete(f"/dataset-links/{link_id}")
     assert res.status_code == 404, res.text
+
+
+# ── split assignment: one data source never spans splits ────────────────────
+
+
+async def _seed_sources(factory, project_id: uuid.UUID, n_sources: int, per_source: int):
+    """Create `n_sources` data sources with `per_source` samples each.
+
+    Returns the sample ids interleaved across sources (so a position-based split
+    would cut every source across splits) and {sample_id: source_id}.
+    """
+    async with factory() as s:
+        sources = [await make_data_source(s, project_id=project_id) for _ in range(n_sources)]
+        per: list[list[uuid.UUID]] = []
+        source_of: dict[uuid.UUID, uuid.UUID] = {}
+        for src in sources:
+            ids = []
+            for frame in range(per_source):
+                sample = await make_sample(
+                    s, project_id=project_id, source_id=src.id, frame_index=frame
+                )
+                ids.append(sample.id)
+                source_of[sample.id] = src.id
+            per.append(ids)
+        await s.commit()
+    interleaved = [per[j][i] for i in range(per_source) for j in range(n_sources)]
+    return interleaved, source_of
+
+
+async def _splits_by_source(factory, commit_id: str, source_of) -> dict[uuid.UUID, set[str]]:
+    from sqlalchemy import select
+
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                select(CommitSample.sample_id, CommitSample.split).where(
+                    CommitSample.commit_id == uuid.UUID(commit_id)
+                )
+            )
+        ).all()
+    out: dict[uuid.UUID, set[str]] = {}
+    for sample_id, split in rows:
+        out.setdefault(source_of[sample_id], set()).add(split)
+    return out
+
+
+async def test_from_samples_keeps_each_source_in_one_split(factory) -> None:
+    user, project = await _seed(factory)
+    sample_ids, source_of = await _seed_sources(factory, project.id, n_sources=7, per_source=10)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        await s.commit()
+        ds_id = ds.id
+
+    async with _client(factory, user) as c:
+        res = await c.post(
+            f"/datasets/{ds_id}/commits/from-samples",
+            json={
+                "sample_ids": [str(i) for i in sample_ids],
+                "split_strategy": {"train_ratio": 0.5, "val_ratio": 0.25},
+            },
+        )
+    assert res.status_code == 201, res.text
+
+    by_source = await _splits_by_source(factory, res.json()["commit_id"], source_of)
+    assert len(by_source) == 7
+    assert all(len(splits) == 1 for splits in by_source.values()), by_source
+
+
+async def test_from_samples_split_is_independent_of_request_order(factory) -> None:
+    user, project = await _seed(factory)
+    sample_ids, source_of = await _seed_sources(factory, project.id, n_sources=6, per_source=5)
+    async with factory() as s:
+        ds_a = await make_dataset(s, project_id=project.id)
+        ds_b = await make_dataset(s, project_id=project.id)
+        await s.commit()
+        ds_a_id, ds_b_id = ds_a.id, ds_b.id
+
+    strategy = {"train_ratio": 0.5, "val_ratio": 0.25}
+    async with _client(factory, user) as c:
+        res_a = await c.post(
+            f"/datasets/{ds_a_id}/commits/from-samples",
+            json={"sample_ids": [str(i) for i in sample_ids], "split_strategy": strategy},
+        )
+        res_b = await c.post(
+            f"/datasets/{ds_b_id}/commits/from-samples",
+            json={"sample_ids": [str(i) for i in reversed(sample_ids)], "split_strategy": strategy},
+        )
+    assert res_a.status_code == 201 and res_b.status_code == 201
+
+    a = await _splits_by_source(factory, res_a.json()["commit_id"], source_of)
+    b = await _splits_by_source(factory, res_b.json()["commit_id"], source_of)
+    assert a == b
+
+
+async def test_create_commit_keeps_each_source_in_one_split(factory) -> None:
+    user, project = await _seed(factory)
+    sample_ids, source_of = await _seed_sources(factory, project.id, n_sources=8, per_source=10)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
+        revs = []
+        for sid in sample_ids:
+            rev = AnnotationRevision(
+                project_id=project.id,
+                sample_id=sid,
+                ontology_id=ont.id,
+                ontology_version=1,
+                revision_no=1,
+                payload={"annotations": []},
+                provenance={},
+            )
+            s.add(rev)
+            revs.append(rev)
+        await s.commit()
+        ds_id, ont_id = ds.id, ont.id
+        rev_ids = [r.id for r in revs]
+
+    async with _client(factory, user) as c:
+        res = await c.post(
+            f"/datasets/{ds_id}/commits",
+            json={
+                "message": "split",
+                "sample_ids": [str(i) for i in sample_ids],
+                "annotation_revision_ids": [str(i) for i in rev_ids],
+                "ontology_id": str(ont_id),
+                "split_strategy": {"train_ratio": 0.5, "val_ratio": 0.25},
+            },
+        )
+    assert res.status_code == 201, res.text
+
+    by_source = await _splits_by_source(factory, res.json()["id"], source_of)
+    assert len(by_source) == 8
+    assert all(len(splits) == 1 for splits in by_source.values()), by_source
+
+
+async def test_create_commit_rejects_samples_outside_project(factory) -> None:
+    user, project = await _seed(factory)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        ont = await make_ontology(s, org_id=project.org_id)
+        await s.commit()
+        ds_id, ont_id = ds.id, ont.id
+
+    async with _client(factory, user) as c:
+        res = await c.post(
+            f"/datasets/{ds_id}/commits",
+            json={
+                "message": "bad",
+                "sample_ids": [str(uuid.uuid4())],
+                "annotation_revision_ids": [str(uuid.uuid4())],
+                "ontology_id": str(ont_id),
+            },
+        )
+    assert res.status_code == 422, res.text
+
+
+async def test_from_samples_reuses_parent_split_for_known_sources(factory) -> None:
+    user, project = await _seed(factory)
+    first_ids, source_of = await _seed_sources(factory, project.id, n_sources=12, per_source=2)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        # A second batch of frames from the same sources.
+        second_ids: list[uuid.UUID] = []
+        for src in set(source_of.values()):
+            sample = await make_sample(s, project_id=project.id, source_id=src, frame_index=99)
+            second_ids.append(sample.id)
+            source_of[sample.id] = src
+        await s.commit()
+        ds_id = ds.id
+
+    async with _client(factory, user) as c:
+        res1 = await c.post(
+            f"/datasets/{ds_id}/commits/from-samples",
+            json={
+                "sample_ids": [str(i) for i in first_ids],
+                "split_strategy": {"train_ratio": 0.9, "val_ratio": 0.05},
+            },
+        )
+        # Very different ratios: re-hashing alone would move most sources.
+        res2 = await c.post(
+            f"/datasets/{ds_id}/commits/from-samples",
+            json={
+                "sample_ids": [str(i) for i in second_ids],
+                "split_strategy": {"train_ratio": 0.1, "val_ratio": 0.1},
+            },
+        )
+    assert res1.status_code == 201 and res2.status_code == 201, (res1.text, res2.text)
+
+    by_source = await _splits_by_source(factory, res2.json()["commit_id"], source_of)
+    assert len(by_source) == 12
+    assert all(len(splits) == 1 for splits in by_source.values()), by_source
+
+
+async def test_from_samples_import_batch_does_not_collapse_into_one_split(factory) -> None:
+    user, project = await _seed(factory)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        # An import: ONE data source, images without a frame_index.
+        src = await make_data_source(s, project_id=project.id)
+        ids = [
+            (await make_sample(s, project_id=project.id, source_id=src.id)).id for _ in range(60)
+        ]
+        await s.commit()
+        ds_id = ds.id
+
+    async with _client(factory, user) as c:
+        res = await c.post(
+            f"/datasets/{ds_id}/commits/from-samples",
+            json={
+                "sample_ids": [str(i) for i in ids],
+                "split_strategy": {"train_ratio": 0.7, "val_ratio": 0.15},
+            },
+        )
+    assert res.status_code == 201, res.text
+    assert res.json()["warnings"] == []
+
+    from sqlalchemy import func, select
+
+    async with factory() as s:
+        counts = dict(
+            (
+                await s.execute(
+                    select(CommitSample.split, func.count())
+                    .where(CommitSample.commit_id == uuid.UUID(res.json()["commit_id"]))
+                    .group_by(CommitSample.split)
+                )
+            ).all()
+        )
+    assert set(counts) == {"train", "val", "test"}
+
+
+async def test_from_samples_lone_video_returns_empty_split_warnings(factory) -> None:
+    user, project = await _seed(factory)
+    sample_ids, _ = await _seed_sources(factory, project.id, n_sources=1, per_source=20)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        await s.commit()
+        ds_id = ds.id
+
+    async with _client(factory, user) as c:
+        res = await c.post(
+            f"/datasets/{ds_id}/commits/from-samples",
+            json={
+                "sample_ids": [str(i) for i in sample_ids],
+                "split_strategy": {"train_ratio": 0.7, "val_ratio": 0.15},
+            },
+        )
+    assert res.status_code == 201, res.text
+    assert len(res.json()["warnings"]) == 2
+
+
+async def test_from_samples_later_single_video_commits_fill_val_and_test(factory) -> None:
+    user, project = await _seed(factory)
+    sample_ids, source_of = await _seed_sources(factory, project.id, n_sources=10, per_source=10)
+    by_video: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for sid in sample_ids:
+        by_video.setdefault(source_of[sid], []).append(sid)
+    async with factory() as s:
+        ds = await make_dataset(s, project_id=project.id)
+        await s.commit()
+        ds_id = ds.id
+
+    commit_id = ""
+    async with _client(factory, user) as c:
+        for ids in by_video.values():  # one video per commit
+            res = await c.post(
+                f"/datasets/{ds_id}/commits/from-samples",
+                json={
+                    "sample_ids": [str(i) for i in ids],
+                    "split_strategy": {"train_ratio": 0.7, "val_ratio": 0.15},
+                },
+            )
+            assert res.status_code == 201, res.text
+            commit_id = res.json()["commit_id"]
+
+    by_source = await _splits_by_source(factory, commit_id, source_of)
+    assert all(len(splits) == 1 for splits in by_source.values())
+    assert {next(iter(v)) for v in by_source.values()} == {"train", "val", "test"}
