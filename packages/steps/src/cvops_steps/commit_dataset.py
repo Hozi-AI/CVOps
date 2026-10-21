@@ -104,26 +104,23 @@ class CommitDatasetStep(Step):
         if ont_version is None:
             raise ValueError(f"ontology {ontology_id!r} not found")
 
-        # ── Source of each committed sample (for by_source_group) ───────────
+        # ── Group of each committed sample (for by_source_group) ────────────
+        # A video's frames share one group; imports and single images are their
+        # own group, so a whole import is not treated as one video.
         src_rows = (
             await session.execute(
                 text(
-                    "SELECT id, source_id FROM samples "
+                    "SELECT id, source_id, frame_index FROM samples "
                     "WHERE id = ANY(CAST(:ids AS uuid[]))"
                 ),
                 {"ids": committed},
             )
         ).all()
-        source_of = {str(sid): str(src) for sid, src in src_rows}
-
-        # ── Assign splits — preset from import takes priority ───────────────
-        preset: dict[str, str] = inputs.get("splits") or {}
-        if preset:
-            # ponytail: fall back to "train" for any sample not in preset (shouldn't happen)
-            splits = {sid: preset.get(sid, "train") for sid in committed}
-        else:
-            assign = split_strategies.get(strategy_key)
-            splits = assign(committed, source_of, train_ratio, val_ratio, seed)
+        source_of = {str(sid): str(src) for sid, src, _fi in src_rows}
+        group_of = {
+            str(sid): split_strategies.group_key(str(sid), str(src), fi)
+            for sid, src, fi in src_rows
+        }
 
         # ── Resolve / create dataset ────────────────────────────────────────
         dataset_id = await self._get_or_create_dataset(
@@ -154,6 +151,74 @@ class CommitDatasetStep(Step):
             for p_sid, p_rev, p_split in parent_rows:
                 if p_rev is not None:  # skip corrupt rows from pre-fix commits
                     merged[str(p_sid)] = (str(p_rev), p_split)
+
+        # ── Assign splits — preset from import takes priority ───────────────
+        split_warnings: list[str] = []
+        preset: dict[str, str] = inputs.get("splits") or {}
+        if preset:
+            # ponytail: fall back to "train" for any sample not in preset (shouldn't happen)
+            splits = {sid: preset.get(sid, "train") for sid in committed}
+        elif strategy_key == "by_source_group":
+            batch_groups = set(group_of.values())
+            pinned: dict[str, str] = {}
+            existing: dict[str, int] = {}
+            if parent_commit_id is not None:
+                # Only the parent rows that matter: this batch's own samples, and
+                # other frames of the videos in this batch. Not the whole dataset.
+                video_sources = [
+                    g.removeprefix("src:") for g in batch_groups if g.startswith("src:")
+                ]
+                parent_rows_in_batch = (
+                    await session.execute(
+                        text(
+                            "SELECT cs.sample_id, s.source_id, s.frame_index, cs.split "
+                            "FROM commit_samples cs JOIN samples s ON s.id = cs.sample_id "
+                            "WHERE cs.commit_id = CAST(:cid AS uuid) "
+                            "AND cs.annotation_revision_id IS NOT NULL "
+                            "AND (cs.sample_id = ANY(CAST(:batch AS uuid[])) "
+                            "OR (s.frame_index IS NOT NULL "
+                            "AND s.source_id = ANY(CAST(:srcs AS uuid[]))))"
+                        ),
+                        {"cid": parent_commit_id, "batch": committed, "srcs": video_sources},
+                    )
+                ).all()
+                pinned = split_strategies.majority_splits(
+                    (group, split)
+                    for sid, src, fi, split in parent_rows_in_batch
+                    if (group := split_strategies.group_key(str(sid), str(src), fi))
+                    in batch_groups
+                )
+                # Frames per split the parent already holds, minus this batch (which
+                # overrides them), so the targets cover the whole dataset.
+                existing = {
+                    split: n
+                    for split, n in (
+                        await session.execute(
+                            text(
+                                "SELECT split, count(*) FROM commit_samples "
+                                "WHERE commit_id = CAST(:cid AS uuid) "
+                                "AND annotation_revision_id IS NOT NULL "
+                                "AND NOT (sample_id = ANY(CAST(:batch AS uuid[]))) "
+                                "GROUP BY split"
+                            ),
+                            {"cid": parent_commit_id, "batch": committed},
+                        )
+                    ).all()
+                }
+            result = split_strategies.assign_grouped(
+                committed,
+                group_of,
+                train_ratio,
+                val_ratio,
+                seed,
+                pinned=pinned,
+                existing=existing,
+            )
+            splits = result.splits
+            split_warnings = result.warnings
+        else:
+            assign = split_strategies.get(strategy_key)
+            splits = assign(committed, source_of, train_ratio, val_ratio, seed)
 
         # The batch wins on overlap (and adds batch-only samples).
         # TODO(#141): removal semantics — a future "this commit deletes sample X"
@@ -211,6 +276,8 @@ class CommitDatasetStep(Step):
             "by_class": dict(by_class),
             "by_review_status": dict(by_review),
         }
+        if split_warnings:
+            stats["split_warnings"] = split_warnings
 
         # ── Create the immutable commit ─────────────────────────────────────
         commit_id = str(uuid.uuid4())

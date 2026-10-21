@@ -250,3 +250,144 @@ async def test_random_seeded_is_deterministic(session: AsyncSession) -> None:
     a = await run("rs_a")
     b = await run("rs_b")
     assert await splits_for(a["commit_id"]) == await splits_for(b["commit_id"])
+
+
+async def test_import_batch_without_frame_index_spreads_across_splits(
+    session: AsyncSession,
+) -> None:
+    proj_id, ont_id, sample_ids, revision_ids, _ = await _seed(session)
+    # An import: images carry no frame_index, so each one is its own group.
+    await session.execute(
+        text("UPDATE samples SET frame_index = NULL WHERE project_id = CAST(:p AS uuid)"),
+        {"p": proj_id},
+    )
+    result = await CommitDatasetStep().run(
+        _ctx(session, proj_id),
+        {
+            "dataset_name": "ds-import",
+            "ontology_id": ont_id,
+            "split_strategy": "by_source_group",
+            "train_ratio": 0.6,
+            "val_ratio": 0.2,
+        },
+        {"sample_ids": sample_ids, "annotation_revision_ids": revision_ids},
+    )
+    stats = (
+        await session.execute(
+            text("SELECT stats FROM commits WHERE id = CAST(:c AS uuid)"),
+            {"c": result["commit_id"]},
+        )
+    ).scalar()
+    assert stats["by_split"] == {"train": 3, "val": 1, "test": 1}
+    assert "split_warnings" not in stats
+
+
+async def test_lone_video_commit_warns_about_empty_splits(session: AsyncSession) -> None:
+    proj_id, ont_id, sample_ids, revision_ids, source_of = await _seed(session)
+    first_source = source_of[sample_ids[0]]
+    keep = [i for i, sid in enumerate(sample_ids) if source_of[sid] == first_source]
+    result = await CommitDatasetStep().run(
+        _ctx(session, proj_id),
+        {
+            "dataset_name": "ds-lone",
+            "ontology_id": ont_id,
+            "split_strategy": "by_source_group",
+            "train_ratio": 0.7,
+            "val_ratio": 0.15,
+        },
+        {
+            "sample_ids": [sample_ids[i] for i in keep],
+            "annotation_revision_ids": [revision_ids[i] for i in keep],
+        },
+    )
+    stats = (
+        await session.execute(
+            text("SELECT stats FROM commits WHERE id = CAST(:c AS uuid)"),
+            {"c": result["commit_id"]},
+        )
+    ).scalar()
+    assert len(stats["by_split"]) == 1  # the video was not cut to fill other splits
+    assert len(stats["split_warnings"]) == 2
+
+
+async def test_later_commit_keeps_a_videos_split_even_with_new_ratios(
+    session: AsyncSession,
+) -> None:
+    proj_id, ont_id, sample_ids, revision_ids, source_of = await _seed(session)
+    step = CommitDatasetStep()
+    first_source = source_of[sample_ids[0]]
+    first = [i for i, sid in enumerate(sample_ids) if source_of[sid] == first_source]
+    rest = [i for i in range(len(sample_ids)) if i not in first]
+
+    async def _commit(idx: list[int], train: float, val: float):
+        return await step.run(
+            _ctx(session, proj_id),
+            {
+                "dataset_name": "ds-sticky",
+                "ontology_id": ont_id,
+                "branch_name": "main",
+                "split_strategy": "by_source_group",
+                "train_ratio": train,
+                "val_ratio": val,
+            },
+            {
+                "sample_ids": [sample_ids[i] for i in idx],
+                "annotation_revision_ids": [revision_ids[i] for i in idx],
+            },
+        )
+
+    c1 = await _commit(first, 0.9, 0.05)
+    # Re-commit the same video's frames with very different ratios, plus the other video.
+    c2 = await _commit(first + rest, 0.1, 0.1)
+    rows = (
+        await session.execute(
+            text("SELECT sample_id, split FROM commit_samples WHERE commit_id = CAST(:c AS uuid)"),
+            {"c": c2["commit_id"]},
+        )
+    ).all()
+    before = (
+        await session.execute(
+            text("SELECT sample_id, split FROM commit_samples WHERE commit_id = CAST(:c AS uuid)"),
+            {"c": c1["commit_id"]},
+        )
+    ).all()
+    after = {str(sid): split for sid, split in rows}
+    assert {after[str(sid)] for sid, _ in before} == {split for _, split in before}
+
+
+async def test_second_commit_counts_parent_frames_when_filling_splits(
+    session: AsyncSession,
+) -> None:
+    proj_id, ont_id, sample_ids, revision_ids, source_of = await _seed(session)
+    step = CommitDatasetStep()
+    first_source = source_of[sample_ids[0]]
+    first = [i for i, sid in enumerate(sample_ids) if source_of[sid] == first_source]
+    second = [i for i in range(len(sample_ids)) if i not in first]
+
+    async def _commit(idx: list[int]):
+        return await step.run(
+            _ctx(session, proj_id),
+            {
+                "dataset_name": "ds-fill",
+                "ontology_id": ont_id,
+                "branch_name": "main",
+                "split_strategy": "by_source_group",
+                "train_ratio": 0.6,
+                "val_ratio": 0.2,
+            },
+            {
+                "sample_ids": [sample_ids[i] for i in idx],
+                "annotation_revision_ids": [revision_ids[i] for i in idx],
+            },
+        )
+
+    await _commit(first)  # 3 frames: the lone video lands in train
+    result = await _commit(second)  # 2 frames: train (3 of 5 at 0.6) is already full
+    stats = (
+        await session.execute(
+            text("SELECT stats FROM commits WHERE id = CAST(:c AS uuid)"),
+            {"c": result["commit_id"]},
+        )
+    ).scalar()
+    # Counting only this batch (2 frames) would put the video in train again.
+    assert stats["by_split"] == {"train": 3, "val": 2}
