@@ -7,7 +7,7 @@ import { putWithProgress } from '../../lib/upload'
 import { sha256Hex } from '../../lib/hash'
 import { client } from '../../lib/client'
 import { toast } from '../../store/toast'
-import { Button, Dialog, Spinner } from '../ui'
+import { Button, Dialog, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../ui'
 import { Field, Input, Select } from '../ui/Field'
 
 type Tab = 'upload' | 'server-path'
@@ -124,13 +124,6 @@ export function ImportDatasetDialog({
     }
   }
 
-  const tabCls = (t: Tab) =>
-    `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-      tab === t
-        ? 'border-iris-400 text-text-primary'
-        : 'border-transparent text-text-muted hover:text-text-primary'
-    }`
-
   const hasSource = tab === 'upload' ? !!(zipFile || folderFiles) : folderPath.trim().length > 0
   const canSubmit = !!ontologyId && !busy && hasSource
 
@@ -150,53 +143,51 @@ export function ImportDatasetDialog({
 
   return (
     <Dialog open={open} onClose={onClose} title="Import Dataset">
-      <div className="flex border-b border-border -mx-6 px-6 mb-4">
-        <button type="button" className={tabCls('upload')} onClick={() => setTab('upload')}>
-          Upload
-        </button>
-        <button type="button" className={tabCls('server-path')} onClick={() => setTab('server-path')}>
-          Server folder path
-        </button>
-      </div>
-
       <form onSubmit={handleSubmit} className="space-y-4">
-        {tab === 'upload' ? (
-          <Field label="Dataset source" htmlFor="zip-input">
-            <div className="border-2 border-dashed border-border rounded-lg p-4 space-y-3">
-              {selectionLabel ? (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-text-primary truncate">{selectionLabel}</span>
-                  <button type="button" onClick={clearSelection} className="ml-2 flex-shrink-0 text-text-muted hover:text-text-primary">✕</button>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+          <TabsList variant="underline" aria-label="Import source" className="-mx-6 mb-4 px-6">
+            <TabsTrigger value="upload">Upload</TabsTrigger>
+            <TabsTrigger value="server-path">Server folder path</TabsTrigger>
+          </TabsList>
+          <TabsContent value="upload">
+            <Field label="Dataset source" htmlFor="zip-input">
+              <div className="border-2 border-dashed border-border rounded-lg p-4 space-y-3">
+                {selectionLabel ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-primary truncate">{selectionLabel}</span>
+                    <button type="button" onClick={clearSelection} className="ml-2 flex-shrink-0 text-text-muted hover:text-text-primary">✕</button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-muted text-center">Select a zip file or a local folder</p>
+                )}
+                <div className="flex gap-2 justify-center">
+                  <Button type="button" size="sm" variant="secondary" onClick={() => zipRef.current?.click()}>
+                    Select zip
+                  </Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => folderRef.current?.click()}>
+                    Select folder
+                  </Button>
                 </div>
-              ) : (
-                <p className="text-sm text-text-muted text-center">Select a zip file or a local folder</p>
-              )}
-              <div className="flex gap-2 justify-center">
-                <Button type="button" size="sm" variant="secondary" onClick={() => zipRef.current?.click()}>
-                  Select zip
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => folderRef.current?.click()}>
-                  Select folder
-                </Button>
               </div>
-            </div>
-            <input id="zip-input" ref={zipRef} type="file" accept=".zip" className="hidden"
-              onChange={(e) => { setFolderFiles(null); setZipFile(e.target.files?.[0] ?? null) }} />
-            {/* ponytail: webkitdirectory not in React types */}
-            <input ref={folderRef} type="file" multiple className="hidden"
-              {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
-              onChange={(e) => {
-                const files = e.target.files ? Array.from(e.target.files) : null
-                setZipFile(null)
-                setFolderFiles(files?.length ? files : null)
-              }} />
-          </Field>
-        ) : (
-          <Field label="Server-side folder path" htmlFor="folderPath">
-            <Input id="folderPath" placeholder="/data/my-dataset" value={folderPath}
-              onChange={(e) => setFolderPath(e.target.value)} />
-          </Field>
-        )}
+              <input id="zip-input" ref={zipRef} type="file" accept=".zip" className="hidden"
+                onChange={(e) => { setFolderFiles(null); setZipFile(e.target.files?.[0] ?? null) }} />
+              {/* ponytail: webkitdirectory not in React types */}
+              <input ref={folderRef} type="file" multiple className="hidden"
+                {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
+                onChange={(e) => {
+                  const files = e.target.files ? Array.from(e.target.files) : null
+                  setZipFile(null)
+                  setFolderFiles(files?.length ? files : null)
+                }} />
+            </Field>
+          </TabsContent>
+          <TabsContent value="server-path">
+            <Field label="Server-side folder path" htmlFor="folderPath">
+              <Input id="folderPath" placeholder="/data/my-dataset" value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)} />
+            </Field>
+          </TabsContent>
+        </Tabs>
 
         <Field label="Dataset name" htmlFor="datasetName">
           <Input id="datasetName" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} />

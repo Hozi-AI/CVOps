@@ -43,6 +43,16 @@
   --focus:           rgba(123, 108, 246, 0.45);  /* iris glow */
   --shadow-color:    rgba(0, 0, 0, 0.5);
 
+  /* Data-viz categorical series (Chart, tailwind `chart-N`). */
+  --chart-1:         #7B6CF6;  /* iris */
+  --chart-2:         #38BDF8;  /* sky */
+  --chart-3:         #34D399;  /* emerald */
+  --chart-4:         #FBBF24;  /* amber */
+  --chart-5:         #F472B6;  /* pink */
+  --chart-6:         #C6F24E;  /* signal */
+  --chart-7:         #A2A9B6;  /* mist */
+  --chart-8:         #2DD4BF;  /* teal */
+
   color-scheme: dark;
 }
 
@@ -68,6 +78,17 @@
 
   --focus:           rgba(93, 79, 224, 0.30);
   --shadow-color:    rgba(17, 19, 23, 0.08);
+
+  /* Deeper shades of the same hues: the dark-theme values (lime, amber, teal)
+   * wash out on white. */
+  --chart-1:         #5D4FE0;
+  --chart-2:         #0284C7;
+  --chart-3:         #059669;
+  --chart-4:         #D97706;
+  --chart-5:         #DB2777;
+  --chart-6:         #65A30D;
+  --chart-7:         #6B7280;
+  --chart-8:         #0D9488;
 
   color-scheme: light;
 }

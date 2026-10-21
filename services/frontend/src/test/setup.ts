@@ -89,3 +89,14 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList
 }
+
+// jsdom lacks ResizeObserver; Radix's floating primitives (Tooltip, Popover)
+// and Recharts' ResponsiveContainer construct one. A no-op stub is enough —
+// nothing in jsdom has a layout to observe.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}
