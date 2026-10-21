@@ -5,11 +5,12 @@ message / single recovery pass:
 
   * ``_ensure_group``    — consumer-group create idempotency (BUSYGROUP
                            swallowed; other ResponseError re-raised).
-  * ack-always contract  — the loop body always XACKs a message even when the
-                           handler raises; re-implemented inline here since the
-                           dispatch lives inside ``_consume_loop``.
   * end-to-end claim+run — seed a pending Run, XADD a doorbell, drive one
-                           claim+run iteration, assert succeeded + empty PEL.
+                           ``_dispatch``, assert succeeded + empty PEL.
+  * infrastructure retry — a handler that can't reach Postgres is acked into
+                           the retry set (not lost, not dead-lettered) and the
+                           run stays pending. The retry/DLQ rules themselves
+                           are unit-tested in ``packages/worker-common/tests``.
   * claim guard          — only a ``pending`` Run is processed; re-delivery of
                            an already-terminal run is a no-op.
   * ``_recover_orphans`` — a stale pending run is re-enqueued onto the stream;
@@ -43,23 +44,9 @@ def _make_loop(stream: str = "preprocessing") -> ConsumerLoop:
     return ConsumerLoop(stream=stream, step_types=["test.echo"])
 
 
-async def _dispatch_and_ack(
-    loop: ConsumerLoop, fake_redis, msg_id: str, fields: dict[str, str]
-) -> None:
-    """Re-implementation of the per-message body of ``_consume_loop`` for one
-    message: route to the handler, then ALWAYS ack in a finally block (the
-    worker never auto-requeues; failures live in PG, not Redis)."""
-    kind = fields.get("kind", "")
-    job_id = fields.get("job_id", "")
-    step_type = fields.get("step_type", "")
-    try:
-        if kind:
-            if loop.sync_handler is not None:
-                await loop.sync_handler(fields)
-        else:
-            await loop.handler(job_id, step_type)
-    finally:
-        await fake_redis.xack(loop.stream, loop.group, msg_id)
+async def _dispatch(loop: ConsumerLoop, fake_redis, msg_id: str, fields: dict[str, str]) -> None:
+    """Settle one message exactly as ``_consume_loop`` does for each delivery."""
+    await loop._dispatch(loop.retry_queue(fake_redis), msg_id, fields)
 
 
 async def _pending_entries(fake_redis, stream: str, group: str) -> int:
@@ -121,7 +108,7 @@ async def test_dispatch_runs_step_and_acks(session, fake_redis, echo_step, worke
     assert fields["job_id"] == str(child.id)
 
     with patch.object(coordinator, "get_storage", lambda: None):
-        await _dispatch_and_ack(loop, fake_redis, msg_id, fields)
+        await _dispatch(loop, fake_redis, msg_id, fields)
 
     # Run advanced through the runner.
     await session.refresh(child)
@@ -133,11 +120,12 @@ async def test_dispatch_runs_step_and_acks(session, fake_redis, echo_step, worke
     assert await _pending_entries(fake_redis, loop.stream, loop.group) == 0
 
 
-async def test_dispatch_acks_even_when_handler_raises(
+async def test_claim_that_cannot_reach_postgres_is_retried(
     session, fake_redis, echo_step, worker_db
 ) -> None:
-    """If the handler raises, the message is STILL acked — the worker never
-    auto-requeues; failures are recorded in PG, not redelivered by Redis."""
+    """Postgres unreachable at claim time: the message is acked into the retry
+    set (not lost as before #189, and not dead-lettered) and the run stays
+    pending, so orphan recovery can also find it."""
     _parent, child = await seed_parent_and_child(session, "test.echo", with_parent=False)
     loop = _make_loop()
 
@@ -148,15 +136,17 @@ async def test_dispatch_acks_even_when_handler_raises(
     )
     msg_id, fields = resp[0][1][0]
 
-    async def _explode(_job_id: str, _step_type: str) -> None:
-        raise RuntimeError("handler blew up")
+    def _db_down():  # type: ignore[no-untyped-def]
+        raise ConnectionRefusedError("postgres is restarting")
 
-    loop.handler = _explode
-    with pytest.raises(RuntimeError, match="handler blew up"):
-        await _dispatch_and_ack(loop, fake_redis, msg_id, fields)
+    with patch.object(runner, "async_session_factory", _db_down):
+        await _dispatch(loop, fake_redis, msg_id, fields)
 
-    # Despite the exception, the message was acked in the finally block.
     assert await _pending_entries(fake_redis, loop.stream, loop.group) == 0
+    assert await fake_redis.zcard(f"{loop.stream}:retry") == 1
+    assert await fake_redis.xlen(f"{loop.stream}:dlq") == 0
+    await session.refresh(child)
+    assert child.status == "pending"
 
 
 # ── claim guard (idempotent against re-enqueue / redelivery) ──────────────────
@@ -265,7 +255,7 @@ async def test_run_forever_initialises_global_redis_for_advance(monkeypatch) -> 
     async def _noop(_redis: object) -> None:
         return None
 
-    async def _consume(_redis: object) -> None:
+    async def _consume(_redis: object, _retries: object) -> None:
         seen["client"] = redis_client.get_redis()  # raises if not initialised
 
     monkeypatch.setattr(loop, "_ensure_group", _noop)

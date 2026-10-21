@@ -596,9 +596,10 @@ local_resource('git-hooks',
 
 # Install the preprocessing worker into the API venv (which already carries
 # cvops-api + cvops-steps). The worker reuses those packages, so it shares the env.
+# worker-common (its ConsumerLoop) is a local package too, so it's installed explicitly.
 local_resource('worker-install',
-    cmd='cd services/api && mkdir -p .venv/pip-tmp && TMPDIR="$PWD/.venv/pip-tmp" PIP_DEFAULT_TIMEOUT=60 PIP_RETRIES=10 .venv/bin/python -m pip install -e ../worker-preprocessing',
-    deps=['services/worker-preprocessing/pyproject.toml'],
+    cmd='cd services/api && mkdir -p .venv/pip-tmp && TMPDIR="$PWD/.venv/pip-tmp" PIP_DEFAULT_TIMEOUT=60 PIP_RETRIES=10 .venv/bin/python -m pip install -e ../../packages/worker-common -e ../worker-preprocessing',
+    deps=['services/worker-preprocessing/pyproject.toml', 'packages/worker-common/pyproject.toml'],
     resource_deps=['api-install', 'steps-install'],
     labels=['5-setup'],
 )
@@ -646,7 +647,7 @@ local_resource('worker-preprocessing',
     # Watch the step impls too — extract_frames/commit_dataset/export_yolo are
     # editable-installed from packages/steps, so the worker must restart to pick
     # up their changes (Python doesn't hot-reload).
-    deps=['services/worker-preprocessing/src', 'packages/steps/src/cvops_steps'],
+    deps=['services/worker-preprocessing/src', 'packages/worker-common/src/cvops_worker_common', 'packages/steps/src/cvops_steps'],
     resource_deps=['postgres', 'redis', 'garage-bootstrap', 'steps-install', 'worker-install', 'migrate-up'],
     labels=['2-app'],
 )
